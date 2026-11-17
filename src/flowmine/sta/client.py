@@ -21,6 +21,41 @@ from flowmine.sta import mapping
 log = logging.getLogger(__name__)
 
 
+FRAME_COLUMNS = [
+    "stream",
+    "time_s",
+    "result_s",
+    "value",
+    "quality",
+    "model_version",
+    "reconstructed",
+]
+
+
+def observation_row(stream: str, o: dict[str, Any], start: datetime) -> dict[str, Any]:
+    """One tidy row from an Observation JSON body (as served or as posted)."""
+    q = o.get("resultQuality") or {}
+    p = o.get("parameters") or {}
+    rt = o.get("resultTime")
+    return {
+        "stream": stream,
+        "time_s": mapping.seconds(start, o["phenomenonTime"].split("/")[0]),
+        "result_s": mapping.seconds(start, rt) if rt else None,
+        "value": o["result"],
+        "quality": int(q.get("code", 0)) if isinstance(q, dict) else 0,
+        "model_version": p.get("model_version"),
+        "reconstructed": bool(p.get("reconstructed", False)),
+    }
+
+
+def frame_from_bodies(
+    bodies: list[dict[str, Any]], names: dict[int, str], start: datetime
+) -> pd.DataFrame:
+    """Tidy frame from posted Observation bodies; ``names`` maps Datastream id to stream."""
+    rows = [observation_row(names[int(b["Datastream"]["@iot.id"])], b, start) for b in bodies]
+    return pd.DataFrame(rows, columns=FRAME_COLUMNS)
+
+
 class StaHttpError(RuntimeError):
     pass
 
@@ -141,33 +176,10 @@ class StaClient:
         """
         t0 = mapping.iso(start, t0_s) if t0_s is not None else None
         t1 = mapping.iso(start, t1_s) if t1_s is not None else None
-        rows = []
+        rows: list[dict[str, Any]] = []
         for name, ds in ds_ids.items():
-            for o in self.observations(ds, t0, t1):
-                q = o.get("resultQuality") or {}
-                p = o.get("parameters") or {}
-                rt = o.get("resultTime")
-                rows.append(
-                    {
-                        "stream": name,
-                        "time_s": mapping.seconds(start, o["phenomenonTime"].split("/")[0]),
-                        "result_s": mapping.seconds(start, rt) if rt else None,
-                        "value": o["result"],
-                        "quality": int(q.get("code", 0)) if isinstance(q, dict) else 0,
-                        "model_version": p.get("model_version"),
-                        "reconstructed": bool(p.get("reconstructed", False)),
-                    }
-                )
-        cols = [
-            "stream",
-            "time_s",
-            "result_s",
-            "value",
-            "quality",
-            "model_version",
-            "reconstructed",
-        ]
-        return pd.DataFrame(rows, columns=cols)
+            rows.extend(observation_row(name, o, start) for o in self.observations(ds, t0, t1))
+        return pd.DataFrame(rows, columns=FRAME_COLUMNS)
 
     def wait(self, timeout_s: float = 120.0) -> bool:
         """Poll the service root until it answers (FROST needs a while to start)."""
