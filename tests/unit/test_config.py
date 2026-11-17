@@ -18,6 +18,7 @@ def test_default_and_smoke_load_with_inheritance() -> None:
 
 def test_unknown_key_is_rejected(tmp_path: Path) -> None:
     p = tmp_path / "bad.yaml"
-    p.write_text("extends: %s\nnetwork: {train_dayz: 3}\n" % Path("configs/default.yaml").resolve())
+    base = Path("configs/default.yaml").resolve()
+    p.write_text(f"extends: {base}\nnetwork: {{train_dayz: 3}}\n")
     with pytest.raises(ValueError, match="train_dayz"):
         load_config(p)
