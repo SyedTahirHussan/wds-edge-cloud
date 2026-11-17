@@ -113,6 +113,7 @@ def _gateway(args: argparse.Namespace) -> int:
         tb.sensors,
         _start(args.config),
         ModelRegistry(Path(args.registry)) if args.registry else None,
+        cfg.edge.summary_s,
     )
     uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="warning")
     return 0

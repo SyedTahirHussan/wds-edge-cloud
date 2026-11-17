@@ -30,13 +30,15 @@ def create_app(
     sensors: list[Sensor],
     start: datetime,
     registry: ModelRegistry | None = None,
+    summary_s: int = 900,
 ) -> FastAPI:
     by_station = {st.station_id: list(st.sensors) for st in stations}
 
     def deployed(station: str) -> int:
         return registry.deployed(by_station[station]) if registry is not None else 1
 
-    gw = Gateway(stations, sensors, m.measured([s.sensor_id for s in sensors]), start, deployed)
+    ds = m.measured([s.sensor_id for s in sensors])
+    gw = Gateway(stations, sensors, ds, start, deployed, summary_s)
     app = FastAPI(title="flowmine gateway")
     app.state.gateway = gw
 

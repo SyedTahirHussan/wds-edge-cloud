@@ -84,6 +84,8 @@ class ModelRegistry:
         return next((e for e in self.versions(sensor_id) if e.status == "active"), None)
 
     def promote(self, sensor_id: str, version: int) -> None:
+        if all(e.version != version for e in self.versions(sensor_id)):
+            raise KeyError(f"{sensor_id} has no version {version}")
         for e in self.versions(sensor_id):
             if e.status == "active":
                 e.status = "retired"

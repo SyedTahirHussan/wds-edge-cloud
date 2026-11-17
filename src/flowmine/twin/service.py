@@ -105,7 +105,14 @@ class LiveTwin:
         nodes, links = report_elements(sensors, virtual)
         self.step_s = cfg.network.hydraulic_step_s
         self.bridge = Bridge(
-            cfg.network.inp, self.step_s, duration_s, sorted(self.b.pumps), nodes, links, cfg
+            cfg.network.inp,
+            self.step_s,
+            duration_s,
+            sorted(self.b.pumps),
+            nodes,
+            links,
+            cfg,
+            level_tol_m=cfg.central.twin_level_tol_m,
         )
         self.t = t0
         self.seen: list[dict[str, Any]] = []
@@ -139,6 +146,10 @@ class LiveTwin:
             self.waiting_since = None
             return True
         return False
+
+    def pending(self) -> bool:
+        """True while observations for the current or a later period are held."""
+        return any(r["time_s"] >= self.t for r in self.seen)
 
     def step(self) -> tuple[int, dict[str, float], dict[str, float]]:
         """Advance one period; returns (t, simulated row, measured values at t)."""
@@ -175,6 +186,22 @@ def live(
     if not mq.start():
         raise RuntimeError(f"MQTT broker {host}:{port} not reachable")
     posted = 0
+
+    def advance(drain: bool) -> None:
+        nonlocal posted
+        while twin.ready(timeout_s) or (drain and twin.pending()):
+            t, row, measured = twin.step()
+            sim = pd.DataFrame([row], index=[t])
+            res = pd.DataFrame(
+                {
+                    f"RES-{k}": [measured[k] - row[f"SIM-{k}"]]
+                    for k in measured
+                    if f"SIM-{k}" in row
+                },
+                index=[t],
+            )
+            posted += publish(client, m, start, sim, res)
+
     last_msg = time.monotonic()
     try:
         while time.monotonic() - last_msg < idle_timeout_s:
@@ -182,19 +209,13 @@ def live(
                 twin.add(inbox.get(timeout=1.0))
                 last_msg = time.monotonic()
             except queue.Empty:
-                continue
-            while twin.ready(timeout_s):
-                t, row, measured = twin.step()
-                sim = pd.DataFrame([row], index=[t])
-                res = pd.DataFrame(
-                    {
-                        f"RES-{k}": [measured[k] - row[f"SIM-{k}"]]
-                        for k in measured
-                        if f"SIM-{k}" in row
-                    },
-                    index=[t],
-                )
-                posted += publish(client, m, start, sim, res)
+                pass
+            # Also checked while idle, so the wall-clock fallback fires when traffic stops.
+            advance(drain=False)
+        # Idle: the stations are done. Step through what is still held.
+        while not inbox.empty():
+            twin.add(inbox.get_nowait())
+        advance(drain=True)
     finally:
         mq.stop()
         twin.bridge.close()

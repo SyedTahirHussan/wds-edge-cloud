@@ -8,6 +8,7 @@ from flowmine.central import homogenise
 from flowmine.central import service as central
 from flowmine.config import Config
 from flowmine.dashboard.app import create_app as dashboard_app
+from flowmine.dashboard.app import state_of
 from flowmine.edge import replay
 from flowmine.edge.core import quality
 from flowmine.sta.client import StaClient
@@ -41,7 +42,13 @@ def test_gateway_dashboard_roundtrip(smoke_cfg: Config, smoke_tb: Testbed, smoke
     assert "<svg" in db.get("/").text
     net = db.get("/api/network").json()
     st = next(s for s in net["stations"] if s["id"] == spec.station_id)
-    assert st["state"] in ("ok", "shift", "reconstructed", "flagged", "missing")
+    rank = ["none", "ok", "shift", "reconstructed", "missing", "flagged"]
+    last = {}
+    for r in node.records:
+        if r[1] >= last.get(r[0], (-1, 0))[0]:
+            last[r[0]] = (r[1], r[4])
+    expected = max((state_of(q) for _, q in last.values()), key=rank.index)
+    assert st["state"] == expected
     assert st["latest"] is not None and len(net["links"]) > 100
     sid = spec.sensors[0]
     series = db.get(f"/api/series/{sid}").json()
@@ -67,7 +74,7 @@ def test_central_analysis_reports_a_biased_sensor(smoke_cfg: Config, smoke_tb: T
 
 
 def test_twin_replay_and_live_step_post_simulated_streams(
-    smoke_cfg: Config, smoke_tb: Testbed
+    smoke_cfg: Config, smoke_tb: Testbed, monkeypatch
 ) -> None:
     from flowmine.sta import mapping
     from flowmine.twin import service as twin
@@ -91,16 +98,38 @@ def test_twin_replay_and_live_step_post_simulated_streams(
     assert len(sim[sim.stream == "SIM-P-15"]) == 36 and len(sim[sim.stream == "VIRT-123"]) == 36
 
     sensors = twin.sensors_from_things(twin.station_things(sta))
-    live = twin.LiveTwin(smoke_cfg, sensors, ["123"], t0, 3 * 3600 + 600)
     rows = sta.load_frame(m.measured([s.sensor_id for s in sensors]), start, t0, t0 + 1800)
+
+    live = twin.LiveTwin(smoke_cfg, sensors, ["123"], t0, 3 * 3600 + 600)
     for r in rows.to_dict("records"):
         live.add(r)
     steps = []
     while live.ready(30.0):
         steps.append(live.step())
+    step_s = smoke_cfg.network.hydraulic_step_s
+    # Every period with a complete set of streams is stepped; nothing is held after.
+    assert [s[0] for s in steps] == list(range(t0, t0 + 1800, step_s))
+    assert not live.pending()
+    # Fed with the truth, the simulated pressure follows the measured one.
+    assert all(abs(s[1]["SIM-P-15"] - s[2]["P-15"]) < 2.0 for s in steps)
     live.bridge.close()
-    assert len(steps) >= 3 and steps[0][0] == t0
-    assert "SIM-P-15" in steps[0][1] and "P-15" in steps[0][2]
+
+    # A stream that has gone silent holds the step until the wall-clock fallback runs
+    # out (one that already reported a later time would not: its sample is missing).
+    clock = [0.0]
+    monkeypatch.setattr(twin.time, "monotonic", lambda: clock[0])
+    live = twin.LiveTwin(smoke_cfg, sensors, ["123"], t0, 3 * 3600 + 600)
+    for r in rows.to_dict("records"):
+        if r["stream"] != "P-15":
+            live.add(r)
+    assert not live.ready(30.0) and live.pending()
+    clock[0] = 29.0
+    assert not live.ready(30.0)
+    clock[0] = 31.0
+    assert live.ready(30.0)
+    t, _sim, measured = live.step()
+    assert t == t0 and "P-15" not in measured
+    live.bridge.close()
 
 
 def test_edge_station_process_posts_through_gateway(
@@ -141,3 +170,21 @@ def test_edge_station_process_posts_through_gateway(
     stats = sta.load_frame({"U": m.datastreams["UPLINK-STATS"]}, start)
     assert len(stats) >= 4
     assert (tmp_path / "st" / f"{spec.station_id}.sqlite").exists()
+
+
+def test_mqtt_handler_error_does_not_stop_delivery() -> None:
+    from types import SimpleNamespace
+
+    from flowmine.sta.mqtt import StaMqtt, topic
+
+    mq = StaMqtt()
+    got: list[tuple[int, dict]] = []
+
+    def broken(ds: int, body: dict) -> None:
+        raise KeyError("result")
+
+    mq.handlers = [broken, lambda ds, body: got.append((ds, body))]
+    msg = SimpleNamespace(topic=topic(4), payload=b'{"result": 1.5}')
+    mq._on_message(mq.client, None, msg)  # type: ignore[arg-type]
+    mq._on_message(mq.client, None, msg)  # type: ignore[arg-type]
+    assert mq.handler_errors == 2 and got == [(4, {"result": 1.5})] * 2

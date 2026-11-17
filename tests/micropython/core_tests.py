@@ -275,6 +275,16 @@ def test_pipeline_gap_reconstruction_and_out_of_range():
     assert p.process((k0 + 5) * P, 1.0) == [] and p.dropped == 1
 
 
+def test_pipeline_snaps_jittered_timestamps_to_the_slot():
+    hw = trained_hw()
+    p = SensorPipeline(meta(), hw)
+    k0 = S2 * NTRAIN
+    out = p.process(k0 * P - 3, seasonal(k0))
+    out += p.process((k0 + 1) * P + 2, seasonal(k0 + 1))
+    assert [r[0] for r in out] == [k0 * P, (k0 + 1) * P]
+    assert hw.k == k0 + 1
+
+
 def test_pipeline_level_shift_is_accepted_after_k_rejections():
     p = SensorPipeline(meta(max_rate=1.0, shift_after=3), trained_hw())
     k0 = S2 * NTRAIN

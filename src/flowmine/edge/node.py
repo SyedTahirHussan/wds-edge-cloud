@@ -11,6 +11,7 @@ switches atomically and keeps the previous version for rollback.
 from __future__ import annotations
 
 import base64
+import copy
 import hashlib
 import json
 import logging
@@ -28,7 +29,7 @@ from flowmine.edge.core.snaive import SeasonalNaive
 from flowmine.edge.core.station import Station
 from flowmine.edge.models import PackagedModels, SensorModels
 from flowmine.edge.store import LocalStore
-from flowmine.edge.uplink import EdgeRecord, Flush, Policy, make_policy
+from flowmine.edge.uplink import DeltaPolicy, EdgeRecord, Flush, Policy, make_policy
 from flowmine.testbed.sensors import Sensor, StationSpec
 
 log = logging.getLogger(__name__)
@@ -222,7 +223,21 @@ class EdgeNode:
         self.current[sid] = Installed(version, model)
         self.core.pipelines[self.local[sid]].set_model(model, version)
         self.policy.model_version = version
+        self._sync_delta(sid, model)
         return True
+
+    def _sync_delta(self, sensor_id: str, model: object) -> None:
+        """Give the send-on-delta sender its own copy of the newly active model.
+
+        The cloud's receiver switches with the version in the frame, so the sender must
+        switch too. The next value is sent unconditionally, so the cloud has a measured
+        anchor right after the switch.
+        """
+        if not isinstance(self.policy, DeltaPolicy) or not isinstance(model, HoltWinters):
+            return
+        sender = self.policy.senders[self.local[sensor_id]]
+        sender.model = copy.deepcopy(model)
+        sender.last_tx = None
 
     def rollback(self, sensor_id: str) -> bool:
         prev = self.previous.pop(sensor_id, None)
@@ -231,6 +246,7 @@ class EdgeNode:
         self.current[sensor_id] = prev
         self.core.pipelines[self.local[sensor_id]].set_model(prev.model, prev.version)
         self.policy.model_version = prev.version
+        self._sync_delta(sensor_id, prev.model)
         return True
 
     def model_version(self, sensor_id: str) -> int:

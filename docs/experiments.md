@@ -91,10 +91,13 @@ week. Two designs are compared: edge validation with store-and-forward, and a
 centralised design that buffers raw samples. Metrics:
 
 - fault events in the window;
-- events flagged during the outage (at the station);
-- share of samples kept;
+- events flagged during the outage (at the station; the centralised design has no
+  station validation and flags none);
 - backlog;
 - backfill time at an assumed 30 frames per hour.
+
+Neither design loses samples: the outbox has no size limit and the station keeps
+samples longer than the outage.
 
 This is an assumption, not a LoRaWAN airtime calculation.
 

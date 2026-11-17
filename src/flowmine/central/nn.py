@@ -85,20 +85,28 @@ def init_mlp(
     )
 
 
-def feature_rows(z: np.ndarray, window: int, s1: int, s2: int) -> tuple[np.ndarray, np.ndarray]:
-    """Slot indices k with full history and the inputs that predict slot k+1 (unfiltered)."""
+def feature_rows(
+    z: np.ndarray, window: int, s1: int, s2: int, slot0: int = 0
+) -> tuple[np.ndarray, np.ndarray]:
+    """Slot indices k with full history and the inputs that predict slot k+1 (unfiltered).
+
+    ``slot0`` is the absolute slot (``t // period``) of ``z[0]``. The daily and weekly
+    phase features use absolute slots, as the edge forecaster does.
+    """
     ks = np.arange(max(window - 1, s1 - 1), len(z) - 1)
     lags = np.stack([z[ks - i] for i in range(window)], axis=1)
     day = z[ks + 1 - s1][:, None]
-    a = 2 * np.pi * ((ks + 1) % s1) / s1
-    b = 2 * np.pi * ((ks + 1) % s2) / s2
+    a = 2 * np.pi * ((slot0 + ks + 1) % s1) / s1
+    b = 2 * np.pi * ((slot0 + ks + 1) % s2) / s2
     tf = np.stack([np.sin(a), np.cos(a), np.sin(b), np.cos(b)], axis=1)
     return ks, np.concatenate([lags, day, tf], axis=1)
 
 
-def features(z: np.ndarray, window: int, s1: int, s2: int) -> tuple[np.ndarray, np.ndarray]:
+def features(
+    z: np.ndarray, window: int, s1: int, s2: int, slot0: int = 0
+) -> tuple[np.ndarray, np.ndarray]:
     """Rows for every slot k with full history: inputs to predict k+1, target z[k+1]-z[k]."""
-    ks, x = feature_rows(z, window, s1, s2)
+    ks, x = feature_rows(z, window, s1, s2, slot0)
     y = z[ks + 1] - z[ks]
     ok = np.isfinite(x).all(axis=1) & np.isfinite(y)
     return x[ok], y[ok]

@@ -92,7 +92,7 @@ Configuration `default`, seeds 1, 2, 3, 4, 5; mean ± sample standard deviation 
 - False-alarm rate on clean samples: hybrid 0.0406, edge Holt-Winters 0.0055, central 0.0354.
 - Reconstruction: the calibration week puts the temporal/spatial crossover at 276 ± 277 min. For 1440-min pressure gaps the MAE is 0.524 m (Holt-Winters), 0.257 m (spatial) and 5.683 m (linear interpolation, which needs the future).
 - Uplink: delta sends 0.36 of the bytes of the validated policy; SensorThings JSON is 34 times the binary frame size for the same records.
-- Cold-start station, one-step RMSE: local 2.100 m, centralised 1.666 m, federated 2.117 m, federated with fine-tuning 2.028 m.
+- Cold-start station, one-step RMSE: local 2.220 m, centralised 1.705 m, federated 2.136 m, federated with fine-tuning 2.102 m.
 - Twin state error at unmonitored nodes: raw 0.92 m, edge-validated 0.67 m, hybrid 0.64 m, clean 0.47 m.
 - Process events: share of event samples reconstructed away central_only 0.016, edge_only 0.010, hybrid 0.011; share of sensor faults raised as events central_only 0.52, edge_only 0.42, hybrid 0.54.
 
@@ -103,8 +103,8 @@ Configuration `default`, seeds 1, 2, 3, 4, 5; mean ± sample standard deviation 
 | Rule tests only | 0.745 ± 0.082 | 0.078 ± 0.008 | 0.142 ± 0.014 | 0.300 ± 0.079 | 0.146 ± 0.047 | 94.308 ± 119.008 | 0.002 ± 0.001 | 0.002 ± 0.001 |
 | Edge, Holt-Winters | 0.523 ± 0.041 | 0.090 ± 0.009 | 0.153 ± 0.014 | 0.760 ± 0.065 | 0.107 ± 0.020 | 189.218 ± 84.023 | 0.005 ± 0.001 | 0.008 ± 0.002 |
 | Edge, neural | 0.513 ± 0.058 | 0.090 ± 0.010 | 0.153 ± 0.017 | 0.740 ± 0.102 | 0.108 ± 0.024 | 109.134 ± 58.190 | 0.006 ± 0.001 | 0.007 ± 0.002 |
-| Central (spatial + lab) | 0.499 ± 0.231 | 0.367 ± 0.138 | 0.393 ± 0.140 | 0.440 ± 0.195 | 0.131 ± 0.032 | 126.414 ± 219.748 | 0.035 ± 0.039 | 0.067 ± 0.025 |
-| Hybrid fusion | 0.470 ± 0.209 | 0.428 ± 0.078 | 0.427 ± 0.103 | 0.650 ± 0.137 | 0.095 ± 0.028 | 197.483 ± 138.301 | 0.041 ± 0.029 | 0.082 ± 0.051 |
+| Central (spatial + lab) | 0.499 ± 0.231 | 0.367 ± 0.138 | 0.393 ± 0.140 | 0.440 ± 0.195 | 0.129 ± 0.034 | 126.414 ± 219.748 | 0.035 ± 0.039 | 0.067 ± 0.025 |
+| Hybrid fusion | 0.470 ± 0.209 | 0.428 ± 0.078 | 0.427 ± 0.103 | 0.650 ± 0.137 | 0.094 ± 0.029 | 197.483 ± 138.301 | 0.041 ± 0.029 | 0.082 ± 0.051 |
 
 **E2 reconstruction**, pressure MAE by gap length
 

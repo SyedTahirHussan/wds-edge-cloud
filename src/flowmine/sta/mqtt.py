@@ -34,6 +34,7 @@ class StaMqtt:
         self.client.on_message = self._on_message
         self.host, self.port = host, port
         self.topics: list[str] = []
+        self.handler_errors = 0
 
     def _on_connect(
         self, client: mqtt.Client, userdata: Any, flags: Any, reason: Any, properties: Any
@@ -52,7 +53,13 @@ class StaMqtt:
             log.warning("non-JSON payload on %s", msg.topic)
             return
         for h in self.handlers:
-            h(int(m.group(1)), body)
+            # An exception here would end paho's network thread and the subscription
+            # with it; log it and keep receiving.
+            try:
+                h(int(m.group(1)), body)
+            except Exception:
+                self.handler_errors += 1
+                log.exception("handler failed for %s", msg.topic)
 
     def start(self, timeout: float = 10.0) -> bool:
         self.client.connect(self.host, self.port, keepalive=30)
@@ -75,3 +82,5 @@ class StaMqtt:
         body = {k: v for k, v in body.items() if k != "Datastream"}
         info = self.client.publish(topic(ds_id), json.dumps(body), qos=1)
         info.wait_for_publish(timeout=10.0)
+        if not info.is_published():
+            raise TimeoutError(f"QoS 1 publish to {topic(ds_id)} not acknowledged")

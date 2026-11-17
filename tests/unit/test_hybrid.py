@@ -36,6 +36,9 @@ def test_registry_versions_promote_rollback_and_deploy(
     reg.promote(sid, 2)
     assert reg.active(sid).version == 2 and reg.versions(sid)[0].status == "retired"
     assert ModelRegistry(tmp_path).active(sid).version == 2
+    with pytest.raises(KeyError):
+        reg.promote(sid, 7)
+    assert reg.active(sid).version == 2
     t0 = smoke_tb.periods["test"][0]
     node = replay.run_station(
         replay.make_node(smoke_tb, spec, smoke_bundles, "validated"), smoke_tb, t0, t0 + 3600
@@ -95,7 +98,9 @@ def test_training_paradigms_account_bytes(smoke_cfg: Config) -> None:
     y = series["S0"]
     err = federated.day_ahead_rmse(m, y, y, [288 * 7])
     assert np.isfinite(err) and err < 3.0
-    assert nn.one_step_mse(m, (y - m.mean) / m.std) < 1.0
+    z = (y - m.mean) / m.std
+    # The network predicts the next change; zero change (persistence) is the baseline.
+    assert nn.one_step_mse(m, z) < float(np.mean(np.diff(z) ** 2))
 
 
 def test_fusion_learns_a_separating_rule() -> None:
@@ -108,3 +113,15 @@ def test_fusion_learns_a_separating_rule() -> None:
     f = Fusion.fit(features(reject, shift, z), y, 0)
     pred = f.predict(features(reject, shift, z))
     assert (pred & y).sum() / y.sum() > 0.8 and (pred & ~y).sum() / (~y).sum() < 0.05
+
+
+def test_phase_features_use_absolute_slots() -> None:
+    """A series that starts later gives the same rows as the full series at those slots."""
+    z = np.sin(np.arange(4000) / 37.0)
+    s1, s2, w = 288, 2016, 12
+    ks, x = nn.feature_rows(z, w, s1, s2)
+    off = 1000
+    ks2, x2 = nn.feature_rows(z[off:], w, s1, s2, slot0=off)
+    assert np.allclose(x2, x[np.searchsorted(ks, ks2 + off)])
+    _, x3 = nn.feature_rows(z[off:], w, s1, s2)
+    assert not np.allclose(x3[:, -2:], x2[:, -2:])

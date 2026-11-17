@@ -79,7 +79,7 @@ def run_edge(
     rows, bodies = [], []
     start = replay.start_time(tb.cfg)
     ds = replay.datastream_ids(tb)
-    gw = Gateway(tb.stations, tb.sensors, ds, start)
+    gw = Gateway(tb.stations, tb.sensors, ds, start, summary_s=tb.cfg.edge.summary_s)
     for spec in tb.stations:
         link = MemoryLink()
         node = replay.make_node(tb, spec, bundles, policy, forecaster, link=link)

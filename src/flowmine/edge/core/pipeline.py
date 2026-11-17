@@ -53,6 +53,9 @@ class SensorPipeline:
         if status != comm.OK:
             self.dropped += 1
             return []
+        # The grid rounds to the nearest slot; stamp the sample with that slot's time so
+        # the forecasters (which floor) see the same slot.
+        t = self.grid.time_of(self.grid.last_slot)
         out = []
         if gap or x is None:
             out.extend(self.flush())

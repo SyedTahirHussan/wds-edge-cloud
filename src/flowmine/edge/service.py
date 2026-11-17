@@ -31,12 +31,19 @@ log = logging.getLogger(__name__)
 
 
 class HttpLink:
-    """Posts frames to the gateway; ``up`` turns False when the gateway is unreachable."""
+    """Posts frames to the gateway; ``up`` turns False when the gateway is unreachable.
+
+    Connection errors and 5xx answers raise ConnectionError, so the frame stays in the
+    outbox and is retried. A 4xx answer means the gateway will never accept the frame;
+    it is logged, counted in ``rejected`` and dropped, so it cannot block the frames
+    queued behind it.
+    """
 
     def __init__(self, url: str) -> None:
         self.url = url.rstrip("/")
         self.http = httpx.Client(timeout=10.0)
         self.up = True
+        self.rejected = 0
 
     def send(self, station: str, frame: bytes) -> None:
         try:
@@ -45,10 +52,17 @@ class HttpLink:
                 content=frame,
                 headers={"Content-Type": "application/octet-stream"},
             )
-            r.raise_for_status()
         except httpx.HTTPError as exc:
             self.up = False
             raise ConnectionError(str(exc)) from exc
+        if 400 <= r.status_code < 500:
+            self.rejected += 1
+            log.error("gateway rejected a frame from %s: %d %s", station, r.status_code, r.text)
+            return
+        if r.status_code >= 500:
+            self.up = False
+            raise ConnectionError(f"gateway answered {r.status_code}")
+        self.up = True
 
 
 def load_packages(registry: ModelRegistry, sensor_ids: list[str]) -> dict[str, PackagedModels]:
@@ -135,4 +149,12 @@ def run(
         time.sleep(period_s / speed / max(len(spec.sensors), 1))
     node.flush_station()
     node.tick(t1 + node.policy.batch_s)
+    if node.backlog() or link.rejected:
+        log.error(
+            "%s: %d frames still queued, %d rejected by the gateway",
+            station,
+            node.backlog(),
+            link.rejected,
+        )
+        return 1
     return 0

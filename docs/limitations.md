@@ -43,7 +43,9 @@ analyser disagreement includes sampling-point and holding-time effects.
 
 The log is generated from the injected faults and
 operations, so every recalibration matches a drift exactly and every operation is
-recorded. A real log is incomplete and its timestamps are approximate.
+recorded. A real log is incomplete and its timestamps are approximate. The central
+drift flags end at the recalibration record, so the exact log favours the central and
+hybrid methods on chlorine drift.
 
 ### Decisions taken for this prototype
 

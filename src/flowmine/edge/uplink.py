@@ -59,13 +59,17 @@ class UplinkStats:
         self.records += len(fl.records)
 
 
-def batch_json(start: datetime, records: list[tuple[Any, ...]], ds_ids: dict[int, int]) -> str:
+def batch_json(
+    start: datetime, records: list[tuple[Any, ...]], ds_ids: dict[int, int], window_s: int = 900
+) -> str:
     """The FROST JSON batch body that would carry these records."""
     reqs = []
     for i, r in enumerate(records):
         if len(r) == 7:
             body = mapping.observation_body(start, r[1], r[2], r[5], datastream_id=ds_ids[r[0]])
-            body["phenomenonTime"] = mapping.iso(start, r[1]) + "/" + mapping.iso(start, r[1] + 900)
+            body["phenomenonTime"] = (
+                mapping.iso(start, r[1]) + "/" + mapping.iso(start, r[1] + window_s)
+            )
             body["parameters"]["min"] = r[3]
             body["parameters"]["max"] = r[4]
         else:
@@ -97,6 +101,7 @@ class Policy:
         self.urgent = False
         self.model_version = 0
         self.stats = UplinkStats()
+        self.window_s = 900  # summary window; SummaryPolicy sets its own
 
     def select(self, rec: EdgeRecord) -> list[tuple[Any, ...]]:
         """Codec records ``(local, t, value, quality)`` to transmit for this edge record."""
@@ -120,7 +125,12 @@ class Policy:
         self.urgent = False
         self.next_flush = (now // self.batch_s + 1) * self.batch_s
         frames = codec.batch(self.station, self.model_version, recs, self.scales, self.max_payload)
-        fl = Flush(now, recs, frames, len(batch_json(self.start, recs, self.ds_ids).encode()))
+        fl = Flush(
+            now,
+            recs,
+            frames,
+            len(batch_json(self.start, recs, self.ds_ids, self.window_s).encode()),
+        )
         self.stats.add(fl)
         self.stats.latencies.extend(now - r[1] for r in recs)
         return fl

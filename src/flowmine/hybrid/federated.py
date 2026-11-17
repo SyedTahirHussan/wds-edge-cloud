@@ -32,14 +32,15 @@ class Trained:
 
 
 def _data(
-    series: dict[str, np.ndarray], cfg: Config, period: int
+    series: dict[str, np.ndarray], cfg: Config, period: int, slot0: dict[str, int] | None
 ) -> dict[str, tuple[np.ndarray, np.ndarray, float, float]]:
     out = {}
     w = cfg.edge.nn_window
     s1 = 86400 // period
     for sid, y in series.items():
         mean, std = float(np.nanmean(y)), float(np.nanstd(y)) or 1.0
-        x, t = nn.features((y - mean) / std, w, s1, 7 * s1)
+        k0 = (slot0 or {}).get(sid, 0)
+        x, t = nn.features((y - mean) / std, w, s1, 7 * s1, k0)
         out[sid] = (x, t, mean, std)
     return out
 
@@ -53,8 +54,14 @@ def raw_upload_bytes(n_samples: int) -> int:
     return n_samples * codec.READING_SIZE + frames * codec.HEADER_SIZE
 
 
-def local(series: dict[str, np.ndarray], cfg: Config, period: int, seed: int) -> Trained:
-    data = _data(series, cfg, period)
+def local(
+    series: dict[str, np.ndarray],
+    cfg: Config,
+    period: int,
+    seed: int,
+    slot0: dict[str, int] | None = None,
+) -> Trained:
+    data = _data(series, cfg, period, slot0)
     nets = {}
     e = cfg.edge
     for i, (sid, (x, t, mean, std)) in enumerate(sorted(data.items())):
@@ -64,8 +71,14 @@ def local(series: dict[str, np.ndarray], cfg: Config, period: int, seed: int) ->
     return Trained(nets, 0, 0)
 
 
-def centralised(series: dict[str, np.ndarray], cfg: Config, period: int, seed: int) -> Trained:
-    data = _data(series, cfg, period)
+def centralised(
+    series: dict[str, np.ndarray],
+    cfg: Config,
+    period: int,
+    seed: int,
+    slot0: dict[str, int] | None = None,
+) -> Trained:
+    data = _data(series, cfg, period, slot0)
     e = cfg.edge
     rng = np.random.default_rng([seed, 12])
     x = np.concatenate([d[0] for d in data.values()])
@@ -85,8 +98,9 @@ def federated(
     rounds: int,
     local_epochs: int,
     fine_tune: bool,
+    slot0: dict[str, int] | None = None,
 ) -> Trained:
-    data = _data(series, cfg, period)
+    data = _data(series, cfg, period, slot0)
     e = cfg.edge
     rng = np.random.default_rng([seed, 13])
     n_in = next(iter(data.values()))[0].shape[1]
@@ -114,10 +128,13 @@ def federated(
     return Trained(nets, up, down)
 
 
-def day_ahead_rmse(m: nn.MLP, inputs: np.ndarray, truth: np.ndarray, origins: list[int]) -> float:
+def day_ahead_rmse(
+    m: nn.MLP, inputs: np.ndarray, truth: np.ndarray, origins: list[int], slot0: int = 0
+) -> float:
     """Recursive 24 h forecast from each origin index (numpy forward, same maths as the edge).
 
     ``inputs`` (observed, gaps filled) feed the history; errors are against ``truth``.
+    ``slot0`` is the absolute slot of index 0, for the phase features.
     """
     z = (inputs - m.mean) / m.std
     zt = (truth - m.mean) / m.std
@@ -128,8 +145,8 @@ def day_ahead_rmse(m: nn.MLP, inputs: np.ndarray, truth: np.ndarray, origins: li
         for _ in range(s1):
             k = len(hist) - 1
             lags = [hist[k - i] for i in range(m.window)]
-            a = 2 * np.pi * ((k + 1) % s1) / s1
-            b = 2 * np.pi * ((k + 1) % m.s2) / m.s2
+            a = 2 * np.pi * ((slot0 + k + 1) % s1) / s1
+            b = 2 * np.pi * ((slot0 + k + 1) % m.s2) / m.s2
             feat = np.array([*lags, hist[k + 1 - s1], np.sin(a), np.cos(a), np.sin(b), np.cos(b)])
             nxt = hist[k] + float(nn.forward(m, feat[None, :])[0])
             hist.append(min(max(nxt, -ZCLIP), ZCLIP))

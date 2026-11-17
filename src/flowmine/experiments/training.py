@@ -27,9 +27,11 @@ def _series(ctx: SeedContext, sid: str, t0: int, t1: int, frame: str = "observed
     )
 
 
-def _one_step(m: nn.MLP, obs: np.ndarray, truth: np.ndarray, clean: np.ndarray) -> float:
+def _one_step(
+    m: nn.MLP, obs: np.ndarray, truth: np.ndarray, clean: np.ndarray, slot0: int
+) -> float:
     z = (obs - m.mean) / m.std
-    ks, x = nn.feature_rows(z, m.window, m.s1, m.s2)
+    ks, x = nn.feature_rows(z, m.window, m.s1, m.s2, slot0)
     ok = np.isfinite(x).all(axis=1) & clean[ks + 1] & np.isfinite(truth[ks + 1])
     pred = (z[ks[ok]] + nn.forward(m, x[ok])) * m.std + m.mean
     return float(np.sqrt(np.mean((pred - truth[ks[ok] + 1]) ** 2)))
@@ -44,17 +46,20 @@ def e5(ctx: SeedContext) -> pd.DataFrame:
     train_end = ctx.periods["train"][1]
     test0, test1 = ctx.periods["test"]
     series = {}
+    slot0 = {}
     for sid in pressure:
         start = train_end - ex.cold_start_days * DAY if sid == cold else 0
         series[sid] = _series(ctx, sid, start, train_end)
+        slot0[sid] = start // period
+    fed = (ex.fed_rounds, ex.fed_local_epochs)
     paradigms = {
-        "local": federated.local(series, cfg, period, ctx.seed),
-        "centralised": federated.centralised(series, cfg, period, ctx.seed),
+        "local": federated.local(series, cfg, period, ctx.seed, slot0),
+        "centralised": federated.centralised(series, cfg, period, ctx.seed, slot0),
         "federated": federated.federated(
-            series, cfg, period, ctx.seed, ex.fed_rounds, ex.fed_local_epochs, fine_tune=False
+            series, cfg, period, ctx.seed, *fed, fine_tune=False, slot0=slot0
         ),
         "federated_finetuned": federated.federated(
-            series, cfg, period, ctx.seed, ex.fed_rounds, ex.fed_local_epochs, fine_tune=True
+            series, cfg, period, ctx.seed, *fed, fine_tune=True, slot0=slot0
         ),
     }
     lab = ctx.tb.labels
@@ -68,15 +73,17 @@ def e5(ctx: SeedContext) -> pd.DataFrame:
             lb = lab[(lab.sensor_id == sid) & (lab.time_s >= hist0) & (lab.time_s < test1)]
             clean = ((lb.fault_type == "") & (lb.event_id < 0)).to_numpy().copy()
             clean[: DAY // period] = False
-            one = _one_step(m, obs, truth, clean)
+            one = _one_step(m, obs, truth, clean, hist0 // period)
+            # Origin d is the last slot before test midnight d; its forecast covers that
+            # whole day, so it needs one history day plus d + 1 days of series.
             per_day = DAY // period
             origins = [
                 per_day - 1 + d * per_day
-                for d in range(ex.day_ahead_origins - 1)
+                for d in range(ex.day_ahead_origins)
                 if per_day * (d + 2) <= len(obs)
             ]
             obs_filled = pd.Series(obs).interpolate(limit_direction="both").to_numpy()
-            day = federated.day_ahead_rmse(m, obs_filled, truth, origins)
+            day = federated.day_ahead_rmse(m, obs_filled, truth, origins, hist0 // period)
             rows.append(
                 {
                     "seed": ctx.seed,

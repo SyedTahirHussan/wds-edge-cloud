@@ -33,12 +33,14 @@ class Gateway:
         ds_ids: dict[str, int],
         start: datetime,
         deployed: Callable[[str], int] | None = None,
+        summary_s: int = 900,
     ) -> None:
         self.by_number = {s.number: s for s in stations}
         self.sensor_at = {(s.station, s.local_id): s for s in sensors}
         self.ds_ids = ds_ids
         self.start = start
         self.deployed = deployed or (lambda station: 1)
+        self.summary_s = summary_s
         self.frames = 0
         self.bytes = 0
 
@@ -63,7 +65,9 @@ class Gateway:
                 code = quality.make(r[5], mv)
                 body = mapping.observation_body(self.start, r[1], r[2], code, mv, datastream_id=ds)
                 body["phenomenonTime"] = (
-                    mapping.iso(self.start, r[1]) + "/" + mapping.iso(self.start, r[1] + 900)
+                    mapping.iso(self.start, r[1])
+                    + "/"
+                    + mapping.iso(self.start, r[1] + self.summary_s)
                 )
                 body["parameters"].update({"min": r[3], "max": r[4], "summary": True})
             else:

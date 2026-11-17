@@ -11,7 +11,7 @@ Configuration `default`, seeds 1, 2, 3, 4, 5; mean ± sample standard deviation 
 - False-alarm rate on clean samples: hybrid 0.0406, edge Holt-Winters 0.0055, central 0.0354.
 - Reconstruction: the calibration week puts the temporal/spatial crossover at 276 ± 277 min. For 1440-min pressure gaps the MAE is 0.524 m (Holt-Winters), 0.257 m (spatial) and 5.683 m (linear interpolation, which needs the future).
 - Uplink: delta sends 0.36 of the bytes of the validated policy; SensorThings JSON is 34 times the binary frame size for the same records.
-- Cold-start station, one-step RMSE: local 2.100 m, centralised 1.666 m, federated 2.117 m, federated with fine-tuning 2.028 m.
+- Cold-start station, one-step RMSE: local 2.220 m, centralised 1.705 m, federated 2.136 m, federated with fine-tuning 2.102 m.
 - Twin state error at unmonitored nodes: raw 0.92 m, edge-validated 0.67 m, hybrid 0.64 m, clean 0.47 m.
 - Process events: share of event samples reconstructed away central_only 0.016, edge_only 0.010, hybrid 0.011; share of sensor faults raised as events central_only 0.52, edge_only 0.42, hybrid 0.54.
 
@@ -22,8 +22,8 @@ Configuration `default`, seeds 1, 2, 3, 4, 5; mean ± sample standard deviation 
 | Rule tests only | 0.745 ± 0.082 | 0.078 ± 0.008 | 0.142 ± 0.014 | 0.300 ± 0.079 | 0.146 ± 0.047 | 94.308 ± 119.008 | 0.002 ± 0.001 | 0.002 ± 0.001 |
 | Edge, Holt-Winters | 0.523 ± 0.041 | 0.090 ± 0.009 | 0.153 ± 0.014 | 0.760 ± 0.065 | 0.107 ± 0.020 | 189.218 ± 84.023 | 0.005 ± 0.001 | 0.008 ± 0.002 |
 | Edge, neural | 0.513 ± 0.058 | 0.090 ± 0.010 | 0.153 ± 0.017 | 0.740 ± 0.102 | 0.108 ± 0.024 | 109.134 ± 58.190 | 0.006 ± 0.001 | 0.007 ± 0.002 |
-| Central (spatial + lab) | 0.499 ± 0.231 | 0.367 ± 0.138 | 0.393 ± 0.140 | 0.440 ± 0.195 | 0.131 ± 0.032 | 126.414 ± 219.748 | 0.035 ± 0.039 | 0.067 ± 0.025 |
-| Hybrid fusion | 0.470 ± 0.209 | 0.428 ± 0.078 | 0.427 ± 0.103 | 0.650 ± 0.137 | 0.095 ± 0.028 | 197.483 ± 138.301 | 0.041 ± 0.029 | 0.082 ± 0.051 |
+| Central (spatial + lab) | 0.499 ± 0.231 | 0.367 ± 0.138 | 0.393 ± 0.140 | 0.440 ± 0.195 | 0.129 ± 0.034 | 126.414 ± 219.748 | 0.035 ± 0.039 | 0.067 ± 0.025 |
+| Hybrid fusion | 0.470 ± 0.209 | 0.428 ± 0.078 | 0.427 ± 0.103 | 0.650 ± 0.137 | 0.094 ± 0.029 | 197.483 ± 138.301 | 0.041 ± 0.029 | 0.082 ± 0.051 |
 
 ### E1 by fault type
 
@@ -121,21 +121,21 @@ Configuration `default`, seeds 1, 2, 3, 4, 5; mean ± sample standard deviation 
 
 ## E4 outage
 
-| outage_h | architecture | fault events in outage | flagged during outage | samples kept | backlog (frames) | backfill (h) | cloud up to date after (h) |
-|---|---|---|---|---|---|---|---|
-| 6 | edge_store_forward | 2.60 ± 1.82 | 0.60 ± 0.89 | 1.00 ± 0.00 | 24.64 ± 0.43 | 0.82 ± 0.01 | 6.82 ± 0.01 |
-| 6 | centralised_raw | 2.60 ± 1.82 | 0.00 ± 0.00 | 1.00 ± 0.00 | 24.00 ± 0.00 | 0.80 ± 0.00 | 6.80 ± 0.00 |
-| 24 | edge_store_forward | 4.80 ± 2.17 | 2.80 ± 1.30 | 1.00 ± 0.00 | 101.23 ± 1.16 | 3.37 ± 0.04 | 27.37 ± 0.04 |
-| 24 | centralised_raw | 4.80 ± 2.17 | 0.00 ± 0.00 | 1.00 ± 0.00 | 96.01 ± 0.03 | 3.20 ± 0.00 | 27.20 ± 0.00 |
+| outage_h | architecture | fault events in outage | flagged at the station during outage | backlog (frames) | backfill (h) | cloud up to date after (h) |
+|---|---|---|---|---|---|---|
+| 6 | edge_store_forward | 2.60 ± 1.82 | 0.60 ± 0.89 | 24.64 ± 0.43 | 0.82 ± 0.01 | 6.82 ± 0.01 |
+| 6 | centralised_raw | 2.60 ± 1.82 | 0.00 ± 0.00 | 24.00 ± 0.00 | 0.80 ± 0.00 | 6.80 ± 0.00 |
+| 24 | edge_store_forward | 4.80 ± 2.17 | 2.80 ± 1.30 | 101.23 ± 1.16 | 3.37 ± 0.04 | 27.37 ± 0.04 |
+| 24 | centralised_raw | 4.80 ± 2.17 | 0.00 ± 0.00 | 96.01 ± 0.03 | 3.20 ± 0.00 | 27.20 ± 0.00 |
 
 ## E5 training paradigms (pressure loggers)
 
 | paradigm | one-step RMSE (m) | day-ahead RMSE (m) | cold start one-step (m) | cold start day-ahead (m) | bytes up | bytes down |
 |---|---|---|---|---|---|---|
-| local | 0.658 ± 0.060 | 6.968 ± 0.880 | 2.100 ± 0.325 | 6.626 ± 1.777 | 0.000 ± 0.000 | 0.000 ± 0.000 |
-| centralised | 0.664 ± 0.046 | 5.127 ± 1.668 | 1.666 ± 0.137 | 19.934 ± 8.560 | 828630.000 ± 0.000 | 29592.000 ± 0.000 |
-| federated | 0.705 ± 0.040 | 3.678 ± 0.408 | 2.117 ± 0.161 | 9.672 ± 0.829 | 295920.000 ± 0.000 | 295920.000 ± 0.000 |
-| federated_finetuned | 0.660 ± 0.041 | 5.337 ± 2.343 | 2.028 ± 0.157 | 10.785 ± 1.033 | 295920.000 ± 0.000 | 295920.000 ± 0.000 |
+| local | 0.642 ± 0.060 | 6.848 ± 1.160 | 2.220 ± 0.320 | 5.838 ± 1.864 | 0.000 ± 0.000 | 0.000 ± 0.000 |
+| centralised | 0.654 ± 0.050 | 5.237 ± 1.188 | 1.705 ± 0.091 | 24.872 ± 17.610 | 828630.000 ± 0.000 | 29592.000 ± 0.000 |
+| federated | 0.695 ± 0.036 | 3.495 ± 0.361 | 2.136 ± 0.141 | 10.284 ± 0.609 | 295920.000 ± 0.000 | 295920.000 ± 0.000 |
+| federated_finetuned | 0.650 ± 0.039 | 5.665 ± 2.511 | 2.102 ± 0.150 | 8.216 ± 0.846 | 295920.000 ± 0.000 | 295920.000 ± 0.000 |
 
 ## E6 twin state estimation
 

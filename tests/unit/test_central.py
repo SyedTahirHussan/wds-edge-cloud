@@ -70,12 +70,17 @@ def test_cusum_finds_drift_and_maintenance_resets_it() -> None:
     up = [a for a in alarms if a.offset > 0]
     assert up and 25 * 86400 <= up[0].sample_s <= 31 * 86400
     assert up[0].alarm_s > up[0].sample_s and up[0].offset > 0.05
+    # A constant offset of 3 sd from day 25 adds 2.5 a day to the sum (k = 0.5): the
+    # first alarm (sum > 5.5) is on day 27. A recalibration just before day 27 resets
+    # the sum, so the first alarm moves to day 29.
+    step = diffs.assign(d=np.where(days >= 25, 0.06, 0.0))
+    unit = {"C-1": (0.0, 0.02)}
+    first = [a.sample_s // 86400 for a in chlorine.cusum(step, unit, 0.5, 5.5)]
     log = pd.DataFrame(
-        {"time_s": [26 * 86400 + 1], "asset": ["C-1"], "type": ["sensor_recalibration"]}
+        {"time_s": [27 * 86400 - 1], "asset": ["C-1"], "type": ["sensor_recalibration"]}
     )
-    d2 = diffs.copy()
-    d2.loc[d2.phenomenon_s > 26 * 86400, "d"] = 0.0
-    assert not chlorine.cusum(d2[d2.phenomenon_s >= 20 * 86400], base, 0.5, 5.0, log)
+    reset = [a.sample_s // 86400 for a in chlorine.cusum(step, unit, 0.5, 5.5, log)]
+    assert first[0] == 27 and reset[0] == 29
 
 
 def test_triage_separates_single_sensor_fault_from_coherent_event() -> None:

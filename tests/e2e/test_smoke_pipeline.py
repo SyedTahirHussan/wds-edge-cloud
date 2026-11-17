@@ -18,8 +18,11 @@ def test_smoke_experiments_and_report(smoke_cfg: Config, tmp_path: Path, monkeyp
         assert len(df) > 0 and (df.seed == 1).all()
     e1 = pd.read_csv(tmp_path / "raw" / "e1_detection.csv")
     assert set(e1.method) == {"rules", "edge_hw", "edge_mlp", "central", "hybrid"}
-    gaps = e1[e1.fault_type.isin(["gap_short", "gap_long"])]
-    assert (gaps.recall == 1.0).all()
+    rec = e1.set_index(["method", "fault_type"]).recall
+    # The forecast residual catches spikes the rule tests miss, and the spatial model
+    # catches the bias a single station cannot see.
+    assert rec["edge_hw", "spike"] > rec["rules", "spike"]
+    assert rec["central", "bias"] > rec["edge_hw", "bias"]
     e3 = pd.read_csv(tmp_path / "raw" / "e3_policies.csv").set_index("policy")
     assert (
         e3.loc["delta", "binary_bytes_per_station_day"]

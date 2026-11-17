@@ -176,7 +176,7 @@ def score(ctx: SeedContext, flags: pd.DataFrame) -> pd.DataFrame:
         good = 0
         for sid, a, b in eps:
             g = flags[(flags.sensor_id == sid) & (flags.time_s >= a) & (flags.time_s <= b)]
-            good += int((g.fault_type != "").any())
+            good += int(((g.fault_type != "") & ~g.fault_type.isin(GAPS)).any())
         rows[-1]["event_precision"] = good / len(eps) if eps else np.nan
     return pd.DataFrame(rows)
 
@@ -197,7 +197,7 @@ def maintenance_ablation(
     """
     _, g, flag, _ = spatial_long(ctx, ctx.edge["edge_hw"].frame, "val", "test")
     negatives = (clean_mask(ctx.tb, g) | _event_ops(ctx, g)) & np.isfinite(g.values)
-    faulty = ~clean_mask(ctx.tb, g) & ~_event_ops(ctx, g) & np.isfinite(g.values)
+    faulty = _fault_mask(ctx, g) & np.isfinite(g.values)
     log = ctx.tb.maintenance
     ops = log[log.type.isin(maintenance.OPERATIONS)]
     aff = {
@@ -218,6 +218,27 @@ def maintenance_ablation(
     )
 
 
+def _grid_mask(g: homogenise.Grid, sub: pd.DataFrame) -> np.ndarray:
+    mask = np.zeros_like(g.suspect)
+    col = {s: j for j, s in enumerate(g.streams)}
+    mask[
+        ((sub.time_s.to_numpy() - g.times[0]) // GRID).astype(int), [col[s] for s in sub.sensor_id]
+    ] = True
+    return mask
+
+
+def _fault_mask(ctx: SeedContext, g: homogenise.Grid) -> np.ndarray:
+    """Samples carrying a non-gap sensor-fault label (process events are not faults)."""
+    lab = ctx.tb.labels
+    sub = lab[
+        lab.sensor_id.isin(g.streams)
+        & lab.time_s.isin(g.times)
+        & (lab.fault_type != "")
+        & ~lab.fault_type.isin(GAPS)
+    ]
+    return _grid_mask(g, sub)
+
+
 def _event_ops(ctx: SeedContext, g: homogenise.Grid) -> np.ndarray:
     """Samples labelled with an operation (valve/pump) event: real changes, not faults."""
     ev = ctx.tb.events
@@ -229,12 +250,7 @@ def _event_ops(ctx: SeedContext, g: homogenise.Grid) -> np.ndarray:
         & lab.event_id.isin(ops)
         & (lab.fault_type == "")
     ]
-    mask = np.zeros_like(g.suspect)
-    col = {s: j for j, s in enumerate(g.streams)}
-    mask[
-        ((sub.time_s.to_numpy() - g.times[0]) // GRID).astype(int), [col[s] for s in sub.sensor_id]
-    ] = True
-    return mask
+    return _grid_mask(g, sub)
 
 
 def e7(ctx: SeedContext) -> pd.DataFrame:

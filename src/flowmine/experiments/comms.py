@@ -14,7 +14,10 @@ E4: the link is down for ``outage_hours`` from ``outage_start_h`` into the test 
 Stations keep validating and storing; frames wait in the outbox and are sent after
 the outage at ``backfill_frames_per_hour`` (an assumed uplink rate, not a measured
 LoRaWAN airtime budget). A centralised design (raw policy, validation in the cloud)
-can only flag a fault in the window once its samples have arrived.
+can only flag a fault in the window once its samples have arrived, so it flags none
+at the station during the outage. The outbox has no size limit and the station keeps
+samples longer than the longest outage, so neither design loses a sample here; the
+difference is what is known during the outage and how long the backlog takes.
 """
 
 from __future__ import annotations
@@ -169,12 +172,14 @@ def e4(ctx: SeedContext) -> pd.DataFrame:
                     for n in nodes
                 ]
             )
-            m = win.merge(recs, on=["sensor_id", "time_s"], how="left")
-            flagged = (m.q.fillna(0).astype(int) & (quality.REJECTING | quality.CROSSCHECK)) != 0
-            detected = int(m[flagged].fault_id.nunique()) if policy != "raw" else 0
-            kept = recs[(recs.time_s >= a) & (recs.time_s < b) & recs.raw.notna()]
-            obs = ctx.tb.observed
-            expected = int(obs[(obs.time_s >= a) & (obs.time_s < b)].value.notna().sum())
+            if policy == "raw":
+                # No validation at the station: nothing is known until the backlog arrives.
+                detected = 0
+            else:
+                m = win.merge(recs, on=["sensor_id", "time_s"], how="left")
+                q = m.q.fillna(0).astype(int)
+                flagged = (q & (quality.REJECTING | quality.CROSSCHECK)) != 0
+                detected = int(m[flagged].fault_id.nunique())
             backfill_h = (
                 sum(n.max_backlog for n in nodes) / len(nodes) / ex.backfill_frames_per_hour
             )
@@ -185,7 +190,6 @@ def e4(ctx: SeedContext) -> pd.DataFrame:
                     "architecture": arch,
                     "fault_events_in_window": int(win.fault_id.nunique()),
                     "events_flagged_during_outage": detected,
-                    "samples_kept_fraction": len(kept) / expected if expected else np.nan,
                     "mean_backlog_frames": sum(n.max_backlog for n in nodes) / len(nodes),
                     "backfill_h": backfill_h,
                     "cloud_up_to_date_after_h": hours + backfill_h,

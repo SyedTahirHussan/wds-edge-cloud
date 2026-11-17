@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import httpx
 import numpy as np
 import pytest
 
@@ -157,3 +158,52 @@ def test_all_forecasters_run_in_the_node(smoke_tb: Testbed, smoke_bundles, forec
     )
     vals = np.array([r[3] for r in node.records if r[3] is not None])
     assert len(vals) > 100 and np.isfinite(vals).all()
+    # After the day, each sensor's forecasts for the next hour beat the day's mean.
+    t1 = t0 + 86400
+    truth = smoke_tb.truth
+    for sid in spec.sensors:
+        p = smoke_tb.sensor(sid).period_s
+        tr = truth[truth.sensor_id == sid].set_index("time_s").value
+        ahead = [t1 + h * p for h in range(12)]
+        model = node.current[sid].model
+        err = np.mean([abs(model.forecast_at(t) - tr[t]) for t in ahead])
+        const = np.mean([abs(tr.loc[t0 : t1 - 1].mean() - tr[t]) for t in ahead])
+        assert err < const, (sid, err, const)
+
+
+def test_http_link_drops_rejected_frames_and_retries_server_errors() -> None:
+    from flowmine.edge.service import HttpLink
+
+    answers = iter([400, 503, 200])
+    seen: list[bytes] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.content)
+        return httpx.Response(next(answers), text="x")
+
+    link = HttpLink("http://gw")
+    link.http = httpx.Client(transport=httpx.MockTransport(handler))
+    link.send("ST-1", b"bad")
+    assert link.rejected == 1 and link.up
+    with pytest.raises(ConnectionError):
+        link.send("ST-1", b"good")
+    assert not link.up
+    link.send("ST-1", b"good")
+    assert link.up and seen == [b"bad", b"good", b"good"]
+
+
+def test_model_install_gives_the_delta_sender_its_own_copy(
+    smoke_tb: Testbed, smoke_bundles
+) -> None:
+    spec = _station(smoke_tb, "logger")
+    sid = spec.sensors[0]
+    t0 = smoke_tb.periods["calib"][0]
+    node = replay.run_station(
+        replay.make_node(smoke_tb, spec, smoke_bundles, "delta"), smoke_tb, t0, t0 + 86400
+    )
+    blob, digest = model_package(sid, 2, smoke_bundles[sid].hw_copy())
+    assert node.install_model(blob, digest)
+    sender = node.policy.senders[node.local[sid]]
+    active = node.current[sid].model
+    assert sender.model is not active and sender.model.state() == active.state()
+    assert sender.last_tx is None

@@ -5,7 +5,6 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-import numpy as np
 import pytest
 
 from flowmine.config import Config
@@ -162,8 +161,6 @@ def test_gateway_frames_to_observations(
 def test_errors_surface(sta: StaClient) -> None:
     with pytest.raises(StaHttpError):
         sta.get("Datastreams(999999999)")
-    assert np.isfinite(
-        sta.create(
-            "Sensors", {**mapping.sensor_body("pressure"), "name": f"S-{uuid.uuid4().hex[:6]}"}
-        )
-    )
+    name = f"S-{uuid.uuid4().hex[:6]}"
+    sid = sta.create("Sensors", {**mapping.sensor_body("pressure"), "name": name})
+    assert sta.get(f"Sensors({sid})")["name"] == name

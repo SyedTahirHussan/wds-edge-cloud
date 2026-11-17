@@ -204,15 +204,19 @@ def run(
     failed = [k for k, p in stations.items() if p.wait() != 0]
     for name in ("twin", "central"):
         try:
-            procs[name].wait(timeout=180)
+            if procs[name].wait(timeout=180) != 0:
+                failed.append(name)
         except subprocess.TimeoutExpired:
             procs[name].terminate()
+            failed.append(f"{name} (timed out)")
+    if procs["gateway"].poll() is not None:
+        failed.append("gateway (exited early)")
     counts = {}
     for name in ("P-15", "SIM-P-15", "EVENTS", "UPLINK-STATS"):
         ds = m.datastreams.get(name) or next(iter(m.datastreams.values()))
         page = client.get(f"Datastreams({ds})/Observations", {"$count": "true", "$top": 1})
         counts[name] = page.get("@iot.count")
-    print("observations stored:", counts, "failed stations:", failed, flush=True)
+    print("observations stored:", counts, "failed processes:", failed, flush=True)
     if keep:
         print("dashboard keeps running; Ctrl-C to stop", flush=True)
         with contextlib.suppress(KeyboardInterrupt):

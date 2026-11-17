@@ -304,8 +304,7 @@ def build(cfg: Config, results: Path) -> tuple[str, str]:
         ["outage_h", "architecture"],
         {
             "fault_events_in_window": "fault events in outage",
-            "events_flagged_during_outage": "flagged during outage",
-            "samples_kept_fraction": "samples kept",
+            "events_flagged_during_outage": "flagged at the station during outage",
             "mean_backlog_frames": "backlog (frames)",
             "backfill_h": "backfill (h)",
             "cloud_up_to_date_after_h": "cloud up to date after (h)",

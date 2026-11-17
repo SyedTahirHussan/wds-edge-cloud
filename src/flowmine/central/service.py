@@ -100,7 +100,10 @@ def run(
             idle += 1
             continue
         idle, latest_seen = 0, t_latest
-        t0 = (t_latest - WINDOW_S) // 300 * 300
+        # Start on a whole triage window so the windows, and the (type, t0) keys used to
+        # avoid re-posting an event, stay the same from one round to the next.
+        span = cfg.central.triage_window * 300
+        t0 = max(0, (t_latest - WINDOW_S) // span * span)
         frame = client.load_frame(m.measured(streams), start, t0, t_latest + 1)
         g = homogenise.align(frame, streams, t0, t_latest + 1, 300, per)
         bodies = []
