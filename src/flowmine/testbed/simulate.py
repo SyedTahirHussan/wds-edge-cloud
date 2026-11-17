@@ -16,7 +16,9 @@ Process events are real hydraulic changes, not sensor faults:
 from __future__ import annotations
 
 import logging
+import tempfile
 from dataclasses import asdict, dataclass
+from pathlib import Path
 
 import networkx as nx
 import numpy as np
@@ -222,4 +224,6 @@ def build_network(
 
 
 def run(wn: wntr.network.WaterNetworkModel) -> wntr.sim.SimulationResults:
-    return wntr.sim.EpanetSimulator(wn).run_sim()
+    """Run EPANET in a private temporary directory (parallel runs must not share files)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        return wntr.sim.EpanetSimulator(wn).run_sim(file_prefix=str(Path(tmp) / "run"))
