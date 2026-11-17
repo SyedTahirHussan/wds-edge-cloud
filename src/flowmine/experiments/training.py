@@ -69,8 +69,11 @@ def e5(ctx: SeedContext) -> pd.DataFrame:
             clean = ((lb.fault_type == "") & (lb.event_id < 0)).to_numpy().copy()
             clean[: DAY // period] = False
             one = _one_step(m, obs, truth, clean)
+            per_day = DAY // period
             origins = [
-                DAY // period - 1 + d * (DAY // period) for d in range(ex.day_ahead_origins - 1)
+                per_day - 1 + d * per_day
+                for d in range(ex.day_ahead_origins - 1)
+                if per_day * (d + 2) <= len(obs)
             ]
             obs_filled = pd.Series(obs).interpolate(limit_direction="both").to_numpy()
             day = federated.day_ahead_rmse(m, obs_filled, truth, origins)

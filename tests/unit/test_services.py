@@ -96,7 +96,7 @@ def test_twin_replay_and_live_step_post_simulated_streams(
     for r in rows.to_dict("records"):
         live.add(r)
     steps = []
-    while live.ready(12):
+    while live.ready(30.0):
         steps.append(live.step())
     live.bridge.close()
     assert len(steps) >= 3 and steps[0][0] == t0

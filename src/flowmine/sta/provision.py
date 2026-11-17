@@ -1,7 +1,10 @@
 """Idempotent provisioning of every SensorThings entity the system uses.
 
 Running ``provision`` twice creates nothing the second time: each entity is looked
-up by name first. Stream names (Datastream names) are the keys the rest of the code
+up by name first. A Thing found by name gets its properties updated, so the element
+mapping always matches the current configuration.
+
+Stream names (Datastream names) are the keys the rest of the code
 uses:
 
     P-15 / F-60 / L-1 / C-15   measured, one per sensor, on the station's Thing
@@ -106,6 +109,8 @@ def provision(
     def thing(name: str, body: dict[str, object], node: str) -> int:
         found = client.find_by_name("Things", name)
         if found is not None:
+            if found.get("properties") != body.get("properties"):
+                client.patch(f"Things({found['@iot.id']})", {"properties": body["properties"]})
             return int(found["@iot.id"])
         body = dict(body)
         body["Locations"] = [mapping.location_body(f"node {node}", *xy[node])]

@@ -3,9 +3,8 @@
 * replay: read stored observations for a window, run the bridge as fast as it goes,
   publish the simulated, residual and virtual-sensor streams;
 * live: subscribe to the measured Datastreams over MQTT and advance one period each
-  time every boundary stream due at that period has reported (or once data
-  ``wait_steps`` periods later have arrived; the step then uses what is there). The
-  other measured streams give the residuals.
+  time every boundary stream due at that period has reported for it or moved past it
+  (see ``LiveTwin.ready``). The other measured streams give the residuals.
 """
 
 from __future__ import annotations
@@ -109,20 +108,37 @@ class LiveTwin:
             cfg.network.inp, self.step_s, duration_s, sorted(self.b.pumps), nodes, links, cfg
         )
         self.t = t0
-        self.rows: list[dict[str, Any]] = []
         self.seen: list[dict[str, Any]] = []
+        self.latest: dict[str, int] = {}
+        self.waiting_since: float | None = None
 
     def add(self, row: dict[str, Any]) -> None:
         self.seen.append(row)
+        s = str(row["stream"])
+        self.latest[s] = max(self.latest.get(s, -1), int(row["time_s"]))
 
-    def ready(self, wait_steps: int) -> bool:
-        """All streams due at the current period have reported, or ``wait_steps`` passed."""
-        if not self.seen:
-            return False
-        latest = max(r["time_s"] for r in self.seen)
+    def ready(self, timeout_s: float) -> bool:
+        """True when every measured stream due at the current period (boundary inputs and
+        the streams that get residuals) has either reported for it or already reported a
+        later time (its sample is missing). MQTT delivers the observations of one batch
+        in no fixed order and stations run at different speeds, so this is decided per
+        stream. If a due stream
+        has not moved for ``timeout_s`` seconds of wall-clock time while data for later
+        periods exist, the step goes ahead without it."""
+        due = [s for s in self.period if self.t % self.period[s] == 0]
         have = {r["stream"] for r in self.seen if r["time_s"] == self.t}
-        due = {s for s in self.streams if self.t % self.period[s] == 0}
-        return due <= have or latest >= self.t + wait_steps * self.step_s
+        if all(s in have or self.latest.get(s, -1) > self.t for s in due):
+            self.waiting_since = None
+            return True
+        if not self.latest or max(self.latest.values()) <= self.t:
+            return False
+        now = time.monotonic()
+        if self.waiting_since is None:
+            self.waiting_since = now
+        if now - self.waiting_since > timeout_s:
+            self.waiting_since = None
+            return True
+        return False
 
     def step(self) -> tuple[int, dict[str, float], dict[str, float]]:
         """Advance one period; returns (t, simulated row, measured values at t)."""
@@ -145,7 +161,7 @@ def live(
     port: int,
     t0: int,
     duration_s: int,
-    wait_steps: int = 12,
+    timeout_s: float = 30.0,
     idle_timeout_s: float = 60.0,
 ) -> int:
     """Run until no observation arrives for ``idle_timeout_s`` seconds."""
@@ -167,7 +183,7 @@ def live(
                 last_msg = time.monotonic()
             except queue.Empty:
                 continue
-            while twin.ready(wait_steps):
+            while twin.ready(timeout_s):
                 t, row, measured = twin.step()
                 sim = pd.DataFrame([row], index=[t])
                 res = pd.DataFrame(

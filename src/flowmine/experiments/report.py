@@ -51,7 +51,7 @@ def table(
     rename: Callable[[str], str] | None = None,
 ) -> str:
     groups = df.groupby(by, sort=False)
-    keys = [k if isinstance(k, tuple) else (k,) for k in groups.groups]
+    keys = [tuple(row) for row in df[by].drop_duplicates().itertuples(index=False)]
     if order is not None:
         keys = [(k,) for k in order if (k,) in keys]
     head = "| " + " | ".join(by + list(cols.values())) + " |"
