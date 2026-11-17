@@ -1,6 +1,25 @@
-# wds-edge-cloud
+<h1 align="center">flowmine</h1>
 
-[![ci](https://github.com/SyedTahirHussan/wds-edge-cloud/actions/workflows/ci.yml/badge.svg)](https://github.com/SyedTahirHussan/wds-edge-cloud/actions/workflows/ci.yml)
+<p align="center">
+Sensor data validation for water distribution networks, split between the sensor
+station and the cloud, with a SensorThings data layer and a live EPANET model.
+</p>
+
+<p align="center">
+<a href="https://github.com/SyedTahirHussan/wds-edge-cloud/actions/workflows/ci.yml"><img alt="ci" src="https://github.com/SyedTahirHussan/wds-edge-cloud/actions/workflows/ci.yml/badge.svg"></a>
+<a href="https://syedtahirhussan.github.io/wds-edge-cloud/"><img alt="project page" src="https://img.shields.io/badge/project%20page-online-1d5f9a"></a>
+<img alt="Python 3.12" src="https://img.shields.io/badge/python-3.12-102a3a">
+<img alt="MicroPython 1.29" src="https://img.shields.io/badge/edge%20core-MicroPython%201.29-102a3a">
+<a href="LICENSE"><img alt="MIT licence" src="https://img.shields.io/badge/licence-MIT-102a3a"></a>
+</p>
+
+<p align="center">
+<a href="https://syedtahirhussan.github.io/wds-edge-cloud/"><b>Project page</b></a> ·
+<a href="#results">Results</a> ·
+<a href="#quickstart">Quickstart</a> ·
+<a href="docs/architecture.md">Architecture</a> ·
+<a href="docs/limitations.md">Limitations</a>
+</p>
 
 `flowmine` is a working prototype of edge and cloud data validation for water
 distribution systems. It contains:

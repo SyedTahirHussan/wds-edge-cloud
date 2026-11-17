@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>flowmine: water-network sensor validation at the edge and in the cloud</title>
+<meta name="description" content="A working prototype of sensor data validation for water distribution networks, split between the sensor station and the cloud, with a SensorThings data layer and a live EPANET model. Simulated on EPANET Net3.">
+<meta property="og:title" content="flowmine: sensor validation for water networks, edge and cloud">
+<meta property="og:description" content="MicroPython-compatible station validation, a SensorThings/FROST data layer, central analytics with lab and maintenance data, and an EPANET model driven by validated observations.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M4 24 L12 14 L20 18 L28 6' fill='none' stroke='%231d5f9a' stroke-width='3' stroke-linecap='round'/%3E%3Ccircle cx='12' cy='14' r='4' fill='%232a78d6'/%3E%3Ccircle cx='28' cy='6' r='3' fill='%231baf7a'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="bar">
+  <a class="mark" href="#top" aria-label="flowmine, back to top">flowmine</a>
+  <nav aria-label="Sections">
+    <a href="#flow">How it works</a>
+    <a href="#results">Results</a>
+    <a href="#run">Run it</a>
+    <a class="gh" href="https://github.com/SyedTahirHussan/wds-edge-cloud">Code on GitHub</a>
+  </nav>
+</header>
+
+<main id="top">
+
+<section class="hero">
+  <div class="hero-text">
+    <h1>Checking water-network sensor data at the station and in the cloud</h1>
+    <p class="lede">flowmine validates and repairs pressure, flow, level and chlorine readings where they are measured, stores them in an OGC SensorThings server, combines them centrally with laboratory, maintenance and weather data, and drives an EPANET model with the result. It also measures what each side catches and what each costs.</p>
+    <dl class="facts">
+      <div><dt>Network</dt><dd>EPANET Net3, <span id="f-stations">15</span> stations, <span id="f-sensors">25</span> sensors</dd></div>
+      <div><dt>Data</dt><dd><span id="f-weeks">8</span> simulated weeks at 5-minute steps</dd></div>
+      <div><dt>Experiments</dt><dd>7, each over <span id="f-seeds">5</span> random seeds</dd></div>
+    </dl>
+    <p class="actions">
+      <a class="btn primary" href="https://github.com/SyedTahirHussan/wds-edge-cloud">Browse the code</a>
+      <a class="btn" href="#results">See the results</a>
+    </p>
+  </div>
+  <figure class="hero-net" aria-labelledby="net-cap">
+    <svg id="net" role="img" aria-label="Map of the EPANET Net3 network with the 15 monitoring stations marked"></svg>
+    <figcaption id="net-cap">Net3 with its monitoring stations. <span class="hint">Point at a station to see what it measures.</span></figcaption>
+    <ul class="net-key" aria-hidden="true">
+      <li><i class="k-pump"></i>Pump station</li>
+      <li><i class="k-tank"></i>Tank station</li>
+      <li><i class="k-logger"></i>Pressure logger</li>
+    </ul>
+  </figure>
+</section>
+
+<section class="context">
+  <p>I built flowmine to work through the three phases of the i3WaterS DC11 doctoral project at the Universitat Politècnica de Catalunya (<i>distributed and centralized data mining for water distribution systems in the context of IoT and big data</i>) before discussing them with the supervisors. Nothing here has run at a utility or on a microcontroller. All data are simulated, and the edge code was tested under the MicroPython Unix port on a laptop.</p>
+</section>
+
+<section id="flow" class="flow">
+  <h2>How a reading travels</h2>
+  <ol class="steps">
+    <li>
+      <h3>Station</h3>
+      <p>Range, rate, flatline and forecast-residual tests, plus a mass balance where a tank has both level and flow. A double-seasonal Holt-Winters forecaster fills short gaps. Readings wait in a local SQLite store when the link is down.</p>
+      <p class="tag">MicroPython-compatible, no numpy</p>
+    </li>
+    <li>
+      <h3>Uplink</h3>
+      <p>A 12-byte binary frame per reading, or fewer bytes with send-on-delta, where the cloud runs the same forecaster and the station only transmits when it disagrees.</p>
+      <p class="tag">Sized for the LoRaWAN EU868 51-byte limit</p>
+    </li>
+    <li>
+      <h3>SensorThings</h3>
+      <p>A gateway decodes frames into Observations on FROST-Server. The validation flag rides in <code>resultQuality</code> and the model version in the parameters.</p>
+      <p class="tag">OGC SensorThings API v1.1, MQTT</p>
+    </li>
+    <li>
+      <h3>Central analytics</h3>
+      <p>PCA and ridge models across sensors, a CUSUM of online chlorine against late laboratory samples, the maintenance log to explain operations, and triage of sensor faults against real network events.</p>
+      <p class="tag">Telecontrol, lab, maintenance, weather</p>
+    </li>
+    <li>
+      <h3>EPANET twin</h3>
+      <p>Validated boundary readings drive EPANET one hydraulic step at a time. Simulated values and residuals go back to SensorThings as their own Datastreams.</p>
+      <p class="tag">EPANET toolkit via WNTR</p>
+    </li>
+    <li>
+      <h3>Model registry</h3>
+      <p>Models trained centrally, locally or by federated averaging are versioned and sent back to the stations, which can roll back.</p>
+      <p class="tag">Closes the loop to the station</p>
+    </li>
+  </ol>
+</section>
+
+<section id="results" class="results">
+  <h2>What the experiments show</h2>
+  <p class="section-note">Means over <span class="n-seeds">5</span> seeds, scored on the eighth week, which no model or threshold saw. Whiskers and ± values are one standard deviation across seeds. Each chart can show its numbers as a table.</p>
+
+  <article class="result" id="r-detect">
+    <h3>The station catches fast faults; slow ones need the centre</h3>
+    <p>From its own history a station finds most spikes and stuck readings. Bias and drift look normal to it, and only cross-sensor models and lab samples expose them. Combining the two finds the most faults overall, at a price in false alarms.</p>
+    <div class="chart" id="c-recall" data-title="Share of faulty samples detected, by fault type"></div>
+    <div class="callouts" id="detect-callouts"></div>
+  </article>
+
+  <article class="result" id="r-gap">
+    <h3>Short gaps are a time-series problem, long gaps a spatial one</h3>
+    <p>For a missing pressure reading, the station's own forecast is about as good as anything for the first hour. Beyond a few hours, estimating it from neighbouring sensors wins. Linear interpolation needs the reading after the gap, so a station cannot use it in real time, and it is the worst over a day.</p>
+    <div class="chart" id="c-gap" data-title="Mean absolute error of the reconstructed pressure, by gap length"></div>
+  </article>
+
+  <div class="pair">
+    <article class="result" id="r-uplink">
+      <h3>Send-on-delta cuts the radio traffic by about two thirds</h3>
+      <p>Bytes per station per day under four uplink policies. The same records as SensorThings JSON would be <b id="json-ratio">34</b> times larger than the binary frames.</p>
+      <div class="chart" id="c-uplink" data-title="Binary bytes per station per day"></div>
+    </article>
+    <article class="result" id="r-twin">
+      <h3>Validated inputs cut the twin's excess error by more than half</h3>
+      <p>Pressure error of the EPANET twin at nodes with no sensor. Clean inputs still leave an error, because the model has one demand multiplier for the whole network.</p>
+      <div class="chart" id="c-twin" data-title="Twin RMSE at unmonitored nodes (m)"></div>
+    </article>
+  </div>
+
+  <div class="pair">
+    <article class="result" id="r-outage">
+      <h3>During an outage, only the station knows</h3>
+      <p>Link outages of 6 and 24 hours. With validation at the station, more than half of the fault events in a 24-hour outage are flagged while the link is down, and the readings wait in the station's store. A design that validates centrally learns nothing until the backlog arrives.</p>
+      <table class="tbl" id="t-outage"></table>
+    </article>
+    <article class="result" id="r-train">
+      <h3>No training scheme wins at both horizons</h3>
+      <p>Forecast error at a station with no history of its own. Pooled central training gives the best next-step forecast and by far the worst day-ahead one. Federated averaging sits between the two. Whether it pays off between utilities that cannot share data is a question a single simulated network cannot answer.</p>
+      <table class="tbl" id="t-train"></table>
+    </article>
+  </div>
+</section>
+
+<section class="demo">
+  <h2>The live demo</h2>
+  <p>One process per station, a gateway, FROST-Server, the central analytics loop and the live twin, replaying two test days at 1,200 times real time. The dashboard reads only from SensorThings.</p>
+  <figure>
+    <img src="img/dashboard.png" alt="Dashboard: network map with station states, a pressure series with raw, validated, reconstructed and EPANET-simulated values, the bridge residual, uplink bytes per policy and the event list" width="1400" height="900" loading="lazy">
+  </figure>
+</section>
+
+<section id="run" class="run">
+  <h2>Run it</h2>
+  <p>Python 3.12 and <a href="https://docs.astral.sh/uv/">uv</a>. Docker for FROST-Server.</p>
+  <div class="cmds">
+    <div class="cmd"><p>Tests and a one-seed smoke run</p><pre><code>git clone https://github.com/SyedTahirHussan/wds-edge-cloud
+cd wds-edge-cloud
+uv sync --frozen
+make test smoke</code></pre><button class="copy" type="button">Copy</button></div>
+    <div class="cmd"><p>FROST-Server and the live demo</p><pre><code>make frost-up frost-test
+make demo     # dashboard on http://127.0.0.1:8050/
+make frost-down</code></pre><button class="copy" type="button">Copy</button></div>
+    <div class="cmd"><p>All experiments, five seeds, about a minute</p><pre><code>make reproduce</code></pre><button class="copy" type="button">Copy</button></div>
+  </div>
+</section>
+
+<section class="limits">
+  <h2>Limits</h2>
+  <ul>
+    <li>Everything is simulated on one small benchmark network. The maintenance log is synthetic and the chlorine model is first-order.</li>
+    <li>Thresholds are calibrated on a labelled week. A utility has few such labels.</li>
+    <li>The edge code has not run on an ESP32. Timings come from CPython and the MicroPython Unix port.</li>
+    <li>The hybrid's false-alarm rate is about seven times the station's, and it varies widely between seeds.</li>
+    <li>About half of the sensor faults are still raised as network events by the triage.</li>
+    <li>No authentication or TLS on MQTT or HTTP.</li>
+  </ul>
+  <p>The full list is in <a href="https://github.com/SyedTahirHussan/wds-edge-cloud/blob/main/docs/limitations.md">docs/limitations.md</a>.</p>
+</section>
+
+<section class="refs">
+  <h2>Built on</h2>
+  <ol>
+    <li>Quevedo et al. (2010). Validation and reconstruction of flow meter data in the Barcelona water distribution network. <i>Control Engineering Practice</i> 18(6). <a href="https://doi.org/10.1016/j.conengprac.2010.03.003">doi</a></li>
+    <li>Cugueró-Escofet et al. (2016). A methodology and a software tool for sensor data validation/reconstruction: application to the Catalonia regional water network. <i>Control Engineering Practice</i> 49. <a href="https://doi.org/10.1016/j.conengprac.2015.11.005">doi</a></li>
+    <li>Pérez et al. (2022). Chlorine concentration modelling and supervision in water distribution systems. <i>Sensors</i> 22(15). <a href="https://doi.org/10.3390/s22155578">doi</a></li>
+    <li>Grau Torrent et al. (2022). Leak localisation method using a detailed hydraulic model combined with high resolution pressure sensors applied to a real network. WDSA/CCWI 2022. <a href="https://doi.org/10.4995/wdsa-ccwi2022.2022.14560">doi</a></li>
+    <li>Lloys et al. (2024). Development of an integrated system for efficient water resource management using ESP32, MicroPython and the IoT. <i>Engineering Proceedings</i> 69(1). <a href="https://doi.org/10.3390/engproc2024069170">doi</a></li>
+    <li>Klise et al. (2017). WNTR. <i>Environmental Modelling &amp; Software</i> 95. <a href="https://doi.org/10.1016/j.envsoft.2017.06.022">doi</a></li>
+    <li>OGC SensorThings API Part 1: Sensing, version 1.1. <a href="https://doi.org/10.62973/18-088">doi</a></li>
+  </ol>
+  <p>All sixteen references, each checked against Crossref or arXiv, are in the <a href="https://github.com/SyedTahirHussan/wds-edge-cloud#references">README</a>.</p>
+</section>
+
+</main>
+
+<footer class="foot">
+  <p>Syed Tahir Hussan. MIT licence. <a href="https://github.com/SyedTahirHussan/wds-edge-cloud">github.com/SyedTahirHussan/wds-edge-cloud</a></p>
+</footer>
+
+<div class="tip" id="tip" role="status" aria-live="polite" hidden></div>
+<script src="app.js" defer></script>
+</body>
+</html>

@@ -15,3 +15,6 @@ dist/
 .DS_Store
 .frost/
 results/smoke/
+
+# copied from docs/img by `make site`
+site/img/

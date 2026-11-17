@@ -10,7 +10,7 @@ export VECLIB_MAXIMUM_THREADS = 1
 export MKL_NUM_THREADS = 1
 
 .PHONY: help setup test lint typecheck micropython smoke reproduce report frost-up frost-down \
-        frost-test demo dashboard ci clean
+        frost-test demo dashboard site ci clean
 
 help:
 	@grep -E '^[a-z-]+:' Makefile | cut -d: -f1 | tr '\n' ' '; echo
@@ -22,8 +22,8 @@ test:
 	$(RUN) pytest -q -m "not frost"
 
 lint:
-	$(RUN) ruff check src tests
-	$(RUN) ruff format --check src tests
+	$(RUN) ruff check src tests scripts
+	$(RUN) ruff format --check src tests scripts
 
 typecheck:
 	$(RUN) mypy
@@ -57,6 +57,10 @@ demo: frost-up
 
 dashboard:
 	$(RUN) flowmine dashboard --url $(FROST_URL)
+
+site:
+	$(RUN) python scripts/build_site.py
+	mkdir -p site/img && cp docs/img/dashboard.png site/img/
 
 ci: lint typecheck test smoke
 
