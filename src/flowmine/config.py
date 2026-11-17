@@ -159,9 +159,11 @@ class CentralConfig:
     ridge_lags: int = 2
     alarm_quantile: float = 0.995
     triage_window: int = 6
+    routine_step_frac: float = 0.3
     cusum_k: float = 0.5
     cusum_h: float = 5.0
     suppress_h: float = 6.0
+    twin_level_tol_m: float = 0.2  # chosen by a sweep on the calibration week, seed 1
 
 
 @dataclass(frozen=True)
@@ -174,6 +176,9 @@ class ExperimentConfig:
     fed_local_epochs: int = 3
     cold_start_days: int = 3
     unmonitored_nodes: int = 6
+    backfill_frames_per_hour: int = 30
+    outage_start_h: float = 36.0
+    day_ahead_origins: int = 7
     workers: int = 5
 
 

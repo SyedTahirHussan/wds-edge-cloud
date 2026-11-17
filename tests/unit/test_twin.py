@@ -119,8 +119,9 @@ def test_leak_shows_as_growing_residual(smoke_tb: Testbed) -> None:
         ["123"],
         smoke_tb.wide("truth"),
     )
-    res = r.residual.filter(like="RES-P")
-    before = res[res.index < leak.start_s].mean().abs().mean()
-    after = res[res.index >= leak.start_s + 6 * 3600].mean().abs().mean()
-    assert after > before + 1.0
+    res = r.residual.filter(like="RES-P").abs().mean(axis=1)
+    before = res[res.index < leak.start_s].mean()
+    early = res[(res.index >= leak.start_s) & (res.index < leak.start_s + 2 * 3600)].mean()
+    late = res[res.index >= leak.start_s + 6 * 3600].mean()
+    assert late > 3 * before and late > early
     assert "VIRT-123" in r.simulated and np.isfinite(r.simulated["VIRT-123"]).all()

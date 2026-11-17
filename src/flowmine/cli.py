@@ -47,6 +47,31 @@ def _sta_provision(args: argparse.Namespace) -> int:
     return 0
 
 
+def _exp_run(args: argparse.Namespace) -> int:
+    from flowmine.experiments import run
+
+    run.run_all(load_config(args.config), Path(args.out))
+    return 0
+
+
+def _exp_report(args: argparse.Namespace) -> int:
+    from flowmine.experiments import report
+
+    report.write(
+        load_config(args.config), Path(args.results), None if args.no_readme else Path(args.readme)
+    )
+    print(f"wrote {Path(args.results) / 'summary.md'}")
+    return 0
+
+
+def _exp_footprint(args: argparse.Namespace) -> int:
+    from flowmine.experiments import footprint
+
+    df = footprint.measure(load_config(args.config), Path(args.out), args.seed)
+    print(df.to_string(index=False))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="flowmine", description=__doc__)
     p.add_argument("-v", "--verbose", action="store_true")
@@ -74,6 +99,23 @@ def build_parser() -> argparse.ArgumentParser:
     pv.add_argument("--data", default="data")
     pv.add_argument("--seed", type=int, default=1)
     pv.set_defaults(func=_sta_provision)
+
+    ex = groups.add_parser("experiments", help="E1-E7").add_subparsers(dest="cmd", required=True)
+    r = ex.add_parser("run", help="run all experiments over the configured seeds")
+    r.add_argument("--config", default="configs/default.yaml")
+    r.add_argument("--out", default="results")
+    r.set_defaults(func=_exp_run)
+    rp = ex.add_parser("report", help="write summary.md, figures and the README block")
+    rp.add_argument("--config", default="configs/default.yaml")
+    rp.add_argument("--results", default="results")
+    rp.add_argument("--readme", default="README.md")
+    rp.add_argument("--no-readme", action="store_true")
+    rp.set_defaults(func=_exp_report)
+    fp = ex.add_parser("footprint", help="edge parameters, sizes and per-sample timings")
+    fp.add_argument("--config", default="configs/default.yaml")
+    fp.add_argument("--out", default="results/edge_footprint.csv")
+    fp.add_argument("--seed", type=int, default=1)
+    fp.set_defaults(func=_exp_footprint)
     return p
 
 

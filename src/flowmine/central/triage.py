@@ -7,6 +7,9 @@ For every window of ``window`` grid steps the triage looks at two kinds of evide
 * spatial: which sensors the central models find inconsistent with the others
   (|z| above threshold).
 
+Windows in which a source meter or measured pump changes state by more than a
+fraction of its range are routine operation and raise no event.
+
 A sensor that is anomalous in time *and* inconsistent with the rest, while at most
 ``max_faulty`` sensors are inconsistent, is a sensor fault: the cloud replaces its
 values with the spatial estimate. When at least ``min_event`` sensors are temporally
@@ -25,12 +28,19 @@ import numpy as np
 class TriageResult:
     fault: np.ndarray  # (n, m) bool, treat as sensor fault (reconstruct)
     event: np.ndarray  # (n,) bool, process event raised in this window
-    event_sensors: np.ndarray  # (n, m) bool, sensors taking part in the event
+    event_sensors: np.ndarray  # (n, m) bool, coherent sensors taking part in the event
 
 
 def triage(
-    temporal: np.ndarray, spatial: np.ndarray, window: int, min_event: int = 2, max_faulty: int = 2
+    temporal: np.ndarray,
+    spatial: np.ndarray,
+    window: int,
+    min_event: int = 2,
+    max_faulty: int = 2,
+    routine: np.ndarray | None = None,
 ) -> TriageResult:
+    """``routine`` (n,) marks steps where a measured pump or source changed state: a
+    coherent change there is routine operation, not a process event."""
     n, m = temporal.shape
     fault = np.zeros((n, m), dtype=bool)
     event = np.zeros(n, dtype=bool)
@@ -41,9 +51,14 @@ def triage(
         s_any = spatial[sl].any(axis=0)
         n_incons = int(s_any.sum())
         coherent = t_any & ~s_any
-        if int(t_any.sum()) >= min_event and coherent.sum() >= max(1, int(t_any.sum()) // 2):
+        is_routine = routine is not None and bool(routine[sl].any())
+        if (
+            not is_routine
+            and int(t_any.sum()) >= min_event
+            and coherent.sum() >= max(1, int(t_any.sum()) // 2)
+        ):
             event[sl] = True
-            part[sl] = t_any[None, :]
+            part[sl] = coherent[None, :]
         if 0 < n_incons <= max_faulty:
             cand = s_any & (t_any | ~event[sl].any())
             fault[sl] = spatial[sl] & cand[None, :]

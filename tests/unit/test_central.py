@@ -88,7 +88,7 @@ def test_triage_separates_single_sensor_fault_from_coherent_event() -> None:
     r = triage.triage(temporal, spatial_f, 6)
     assert r.fault[0:6, 2].all() and not r.event[0:6].any()
     assert r.event[12:18].all() and not r.fault[12:18].any()
-    assert r.event_sensors[12, [0, 1, 3, 4]].all()
+    assert r.event_sensors[12, [0, 1, 3, 4]].all() and not r.event_sensors[0, 2]
 
 
 def test_temperature_covariate_helps_when_demand_depends_on_it() -> None:

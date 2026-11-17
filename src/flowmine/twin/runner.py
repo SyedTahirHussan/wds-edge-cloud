@@ -200,7 +200,16 @@ def run_twin(
     b = boundary_from(wn, sensors)
     inp = inputs_from_frame(frame, boundary_streams(b), times)
     nodes, links = report_elements(sensors, virtual_nodes)
-    bridge = Bridge(cfg.network.inp, step, t1 - t0 + step, sorted(b.pumps), nodes, links, cfg)
+    bridge = Bridge(
+        cfg.network.inp,
+        step,
+        t1 - t0 + step,
+        sorted(b.pumps),
+        nodes,
+        links,
+        cfg,
+        level_tol_m=cfg.central.twin_level_tol_m,
+    )
     rows, degraded = [], []
     try:
         for si in step_inputs(inp, b, step):

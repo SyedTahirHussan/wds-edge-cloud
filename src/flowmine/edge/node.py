@@ -14,6 +14,7 @@ import base64
 import hashlib
 import json
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Protocol
@@ -25,7 +26,7 @@ from flowmine.edge.core.mlp import MLPForecaster
 from flowmine.edge.core.pipeline import SensorPipeline
 from flowmine.edge.core.snaive import SeasonalNaive
 from flowmine.edge.core.station import Station
-from flowmine.edge.models import SensorModels
+from flowmine.edge.models import PackagedModels, SensorModels
 from flowmine.edge.store import LocalStore
 from flowmine.edge.uplink import EdgeRecord, Flush, Policy, make_policy
 from flowmine.testbed.sensors import Sensor, StationSpec
@@ -53,15 +54,22 @@ class MemoryLink:
 
 
 def model_package(
-    sensor_id: str, version: int, model: Forecaster, mlp_bytes: bytes | None = None
+    sensor_id: str,
+    version: int,
+    model: Forecaster,
+    mlp_bytes: bytes | None = None,
+    meta: dict[str, Any] | None = None,
 ) -> tuple[bytes, str]:
-    """Serialise a forecaster for distribution; returns (blob, sha256 hex)."""
+    """Serialise a forecaster (and optionally the pipeline parameters) for distribution;
+    returns (blob, sha256 hex)."""
     body: dict[str, Any] = {
         "sensor": sensor_id,
         "version": version,
         "kind": model.kind,
         "state": model.state(),
     }
+    if meta is not None:
+        body["meta"] = meta
     if mlp_bytes is not None:
         body["weights"] = base64.b64encode(mlp_bytes).decode()
     blob = json.dumps(body, separators=(",", ":")).encode()
@@ -93,7 +101,7 @@ class EdgeNode:
         self,
         spec: StationSpec,
         sensors: list[Sensor],
-        bundles: dict[str, SensorModels],
+        bundles: Mapping[str, SensorModels | PackagedModels],
         cfg: Config,
         policy: str,
         start: datetime,
@@ -147,6 +155,9 @@ class EdgeNode:
         self.policy.model_version = model_version
         self.records: list[tuple[str, int, float | None, float | None, int, float]] = []
         self.keep_records = True
+        self.flushes: list[tuple[int, list[tuple[Any, ...]]]] = []
+        self._pending_records: list[tuple[Any, ...]] = []
+        self.max_backlog = 0
 
     def ingest(self, sensor_id: str, t: int, x: float | None) -> list[EdgeRecord]:
         recs = self.core.process(self.local[sensor_id], t, x)
@@ -174,10 +185,17 @@ class EdgeNode:
         if fl is not None:
             for fr in fl.frames:
                 self.store.enqueue(now, fr)
+            self._pending_records.extend(fl.records)
+        if not self.link.up:
+            self.max_backlog = max(self.max_backlog, self.backlog())
         if self.link.up:
-            for seq, _created, frame in self.store.outbox():
+            sent = self.store.outbox()
+            for seq, _created, frame in sent:
                 self.link.send(self.spec.station_id, frame)
                 self.store.ack(seq)
+            if sent and self.keep_records:
+                self.flushes.append((now, self._pending_records))
+                self._pending_records = []
         self.store.commit()
         return fl
 

@@ -102,7 +102,7 @@ class Bridge:
     report_links: list[str]
     cfg: Config
     pump_on_l_s: float = 1.0
-    level_tol_m: float = 0.05
+    level_tol_m: float = 0.2
     _tmp: tempfile.TemporaryDirectory[str] = field(init=False, repr=False)
     en: ENepanet = field(init=False, repr=False)
     base: dict[str, float] = field(init=False)
@@ -132,6 +132,10 @@ class Bridge:
         self.junctions = [j for j in wn.junction_name_list if self.base.get(j, 0.0) > 0]
         self.base_total_l_s = 1000.0 * sum(self.base[j] for j in self.junctions)
         self.multiplier = 1.0
+        tank_links = {lk for t in wn.tank_name_list for lk in wn.get_links_for_node(t)}
+        # Pipes next to a tank are closed temporarily by EPANET when the tank is full or
+        # empty; carrying that state into a re-initialisation would close them for good.
+        self.carry_links = [i for name, i in self.idx_link.items() if name not in tank_links]
         self.limits = {
             t: (
                 self.en.ENgetnodevalue(self.idx_node[t], EN.MINLEVEL) + 1e-3,
@@ -159,13 +163,14 @@ class Bridge:
     def _resync(self, levels: dict[str, float]) -> None:
         """Re-initialise hydraulics at the current time with measured tank levels.
 
-        Node chlorine and link statuses are carried over, so only the tank state changes.
+        Node chlorine and link statuses are carried over (except for pipes attached to a
+        tank, whose temporary closures EPANET manages itself), so only the tank state changes.
         The EPANET clock restarts at zero (the toolkit refused to set the start time of
         day), so time-of-day controls on unmeasured links would shift; Net3 has none
         once the Lake pump is driven by its meter.
         """
         qual = {i: self.en.ENgetnodevalue(i, EN.QUALITY) for i in self.idx_node.values()}
-        status = {i: self.en.ENgetlinkvalue(i, EN.STATUS) for i in self.idx_link.values()}
+        status = {i: self.en.ENgetlinkvalue(i, EN.STATUS) for i in self.carry_links}
         current = self.model_levels()
         self.en.ENcloseQ()
         self.en.ENcloseH()

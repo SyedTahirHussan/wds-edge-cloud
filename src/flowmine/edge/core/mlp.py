@@ -17,6 +17,9 @@ import struct
 from array import array
 
 MAGIC = b"FMW1"
+# Recursive forecasts are clamped to this many training standard deviations: the
+# network predicts increments, and over long horizons their errors can accumulate.
+ZCLIP = 8.0
 HEADER = "<4sBBHHHff"
 LAYER = "<HHB"
 TWO_PI = 6.283185307179586
@@ -104,7 +107,12 @@ class MLPForecaster:
         return self.hist[slot % self.s1]
 
     def _next_z(self, k, recent):
-        return self._z(k, recent) + forward(self.layers, self._features(k, recent))[0]
+        z = self._z(k, recent) + forward(self.layers, self._features(k, recent))[0]
+        if z > ZCLIP:
+            return ZCLIP
+        if z < -ZCLIP:
+            return -ZCLIP
+        return z
 
     def update(self, x, t):
         """Append ``x`` (or, when None, the model's own forecast) to the input history."""

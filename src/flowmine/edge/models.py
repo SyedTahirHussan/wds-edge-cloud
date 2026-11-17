@@ -8,6 +8,7 @@ bundle is built only from observed training data, which is what the cloud holds.
 from __future__ import annotations
 
 import copy
+import json
 import zlib
 from dataclasses import dataclass, field
 
@@ -136,3 +137,30 @@ def fit_sensor(
     for k in range(max(0, len(y) - s1), len(y)):
         hist[k % s1] = float(z[k]) if np.isfinite(z[k]) else 0.0
     return SensorModels(sid, pipeline_meta(s, cfg, scale), hw, params, net, hist, last, y)
+
+
+class PackagedModels:
+    """A sensor's models as a station receives them from the registry.
+
+    It offers what EdgeNode uses from a SensorModels bundle: the pipeline parameters
+    and Holt-Winters copies (the package format of flowmine.edge.node.model_package).
+    """
+
+    def __init__(self, blob: bytes) -> None:
+        body = json.loads(blob)
+        if body.get("kind") != "hw" or "meta" not in body:
+            raise ValueError("package needs a Holt-Winters state and pipeline parameters")
+        self.sensor_id = str(body["sensor"])
+        self.version = int(body["version"])
+        self.meta: dict[str, object] = body["meta"]
+        st = body["state"]
+        self.hw = HoltWinters(st["period"], st["s1"], st["s2"], 0.0, 0.0, 0.0, 0.0)
+        self.hw.load(st)
+
+    def hw_copy(self) -> HoltWinters:
+        return copy.deepcopy(self.hw)
+
+    def forecaster(self, kind: str) -> HoltWinters:
+        if kind != "hw":
+            raise ValueError("packaged models carry the Holt-Winters forecaster only")
+        return self.hw_copy()

@@ -3,6 +3,11 @@ UV ?= uv
 RUN = $(UV) run --frozen
 FROST_URL ?= http://localhost:8080/FROST-Server/v1.1
 MICROPYTHON ?= micropython
+# Single-threaded numerics so that results are byte-identical between runs.
+export OMP_NUM_THREADS = 1
+export OPENBLAS_NUM_THREADS = 1
+export VECLIB_MAXIMUM_THREADS = 1
+export MKL_NUM_THREADS = 1
 
 .PHONY: help setup test lint typecheck micropython smoke reproduce report frost-up frost-down \
         frost-test demo dashboard ci clean
