@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>flowmine dashboard</title>
+<style>
+  :root { --bg:#fbfbf8; --fg:#1d232a; --muted:#68717c; --line:#c9ced4; --ok:#2f8f4e;
+          --rec:#e08a1e; --bad:#c43c39; --miss:#7a5fb0; --shift:#2f6fb0; --none:#b8bdc3; }
+  body { margin:0; font:15px/1.4 system-ui, sans-serif; background:var(--bg); color:var(--fg); }
+  header { padding:10px 18px; border-bottom:1px solid var(--line); display:flex; gap:24px; align-items:baseline; }
+  header h1 { font-size:18px; margin:0; }
+  header span { color:var(--muted); }
+  main { display:grid; grid-template-columns: 430px 1fr; gap:14px; padding:14px 18px; }
+  section { background:#fff; border:1px solid var(--line); border-radius:6px; padding:10px 12px; }
+  h2 { font-size:14px; margin:0 0 6px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); }
+  svg text { font-size:11px; fill:var(--fg); }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  td, th { text-align:right; padding:2px 6px; border-bottom:1px solid #eef0f2; }
+  td:first-child, th:first-child { text-align:left; }
+  .legend span { display:inline-block; margin-right:12px; font-size:13px; }
+  .dot { display:inline-block; width:10px; height:10px; border-radius:5px; margin-right:4px; vertical-align:middle; }
+  #events li { font-size:13px; margin-bottom:2px; }
+  select { font-size:14px; }
+</style>
+</head>
+<body>
+<header><h1>flowmine: edge validation and EPANET bridge</h1>
+  <span id="status">connecting...</span><span id="latest"></span></header>
+<main>
+  <div>
+    <section><h2>Network and station state</h2>
+      <svg id="net" width="400" height="400" viewBox="0 0 400 400"></svg>
+      <div class="legend">
+        <span><i class="dot" style="background:var(--ok)"></i>valid</span>
+        <span><i class="dot" style="background:var(--shift)"></i>level shift</span>
+        <span><i class="dot" style="background:var(--rec)"></i>reconstructed</span>
+        <span><i class="dot" style="background:var(--bad)"></i>rejected</span>
+        <span><i class="dot" style="background:var(--miss)"></i>missing</span>
+      </div>
+    </section>
+    <section style="margin-top:14px"><h2>Bytes sent per uplink policy (all stations)</h2>
+      <table id="counters"><tr><th>policy</th><th>binary B</th><th>JSON B</th><th>frames</th></tr></table>
+    </section>
+    <section style="margin-top:14px"><h2>Events from the central analytics</h2>
+      <ul id="events" style="padding-left:18px; margin:0"></ul>
+    </section>
+  </div>
+  <div>
+    <section><h2>Sensor <select id="sensor"></select></h2>
+      <div class="legend">
+        <span><i class="dot" style="background:#9aa3ad"></i>raw</span>
+        <span><i class="dot" style="background:#1f5fa8"></i>validated</span>
+        <span><i class="dot" style="background:var(--rec)"></i>reconstructed</span>
+        <span><i class="dot" style="background:#2f8f4e"></i>simulated (EPANET)</span>
+        <span><i class="dot" style="background:#f2c4c3"></i>flagged interval</span>
+      </div>
+      <svg id="chart" width="100%" height="330" viewBox="0 0 900 330" preserveAspectRatio="none"></svg>
+      <h2 style="margin-top:8px">Bridge residual (measured minus simulated)</h2>
+      <svg id="resid" width="100%" height="140" viewBox="0 0 900 140" preserveAspectRatio="none"></svg>
+    </section>
+  </div>
+</main>
+<script>
+const NS = "http://www.w3.org/2000/svg";
+const COLORS = {ok:"var(--ok)", reconstructed:"var(--rec)", flagged:"var(--bad)",
+                missing:"var(--miss)", shift:"var(--shift)", none:"var(--none)"};
+const FLAG_BITS = 2 | 4 | 8 | 16 | 32 | 1;
+let selected = null;
+function el(tag, attrs, parent) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function scaler(values, lo, hi) {
+  const v = values.filter(x => x !== null && isFinite(x));
+  let a = Math.min(...v), b = Math.max(...v);
+  if (!isFinite(a)) { a = 0; b = 1; }
+  if (a === b) { a -= 1; b += 1; }
+  const pad = (b - a) * 0.08;
+  a -= pad; b += pad;
+  return x => hi - (x - a) / (b - a) * (hi - lo);
+}
+async function getJSON(url) { const r = await fetch(url); if (!r.ok) throw new Error(url); return r.json(); }
+async function drawNetwork() {
+  const d = await getJSON("/api/network");
+  const svg = document.getElementById("net");
+  svg.innerHTML = "";
+  const xs = Object.values(d.nodes).map(p => p[0]), ys = Object.values(d.nodes).map(p => p[1]);
+  const minx = Math.min(...xs), maxx = Math.max(...xs), miny = Math.min(...ys), maxy = Math.max(...ys);
+  const s = 370 / Math.max(maxx - minx, maxy - miny);
+  const X = x => 15 + (x - minx) * s, Y = y => 385 - (y - miny) * s;
+  for (const [a, b] of d.links) {
+    const p = d.nodes[a], q = d.nodes[b];
+    if (p && q) el("line", {x1:X(p[0]), y1:Y(p[1]), x2:X(q[0]), y2:Y(q[1]), stroke:"#c9ced4", "stroke-width":1.2}, svg);
+  }
+  const sel = document.getElementById("sensor");
+  const sensors = [];
+  let latest = null;
+  for (const st of d.stations) {
+    const r = st.class === "virtual" ? 3 : 7;
+    const c = el("circle", {cx:X(st.x), cy:Y(st.y), r:r, fill: st.class === "virtual" ? "#ffffff" : COLORS[st.state],
+                            stroke:"#1d232a", "stroke-width":1, style:"cursor:pointer"}, svg);
+    c.appendChild(el("title", {})).textContent = st.id + " (" + st.state + ")";
+    if (st.sensors.length) {
+      el("text", {x:X(st.x) + 9, y:Y(st.y) + 4}, svg).textContent = st.id;
+      c.addEventListener("click", () => { selected = st.sensors[0]; sel.value = selected; drawSeries(); });
+      sensors.push(...st.sensors);
+    }
+    if (st.latest && (!latest || st.latest > latest)) latest = st.latest;
+  }
+  if (sel.options.length !== sensors.length) {
+    sel.innerHTML = "";
+    for (const s of sensors.sort()) { const o = document.createElement("option"); o.value = s; o.textContent = s; sel.appendChild(o); }
+    if (!selected) selected = sensors.find(s => s.startsWith("P-")) || sensors[0];
+    sel.value = selected;
+  }
+  document.getElementById("latest").textContent = latest ? "latest observation " + latest : "no observations yet";
+}
+function drawSeries2(svg, h, series, extra) {
+  svg.innerHTML = "";
+  const W = 900, top = 10, bottom = h - 22;
+  const t = series.t.map(s => Date.parse(s));
+  const all = t.concat(extra.flatMap(e => e.t.map(s => Date.parse(s))));
+  if (!all.length) return;
+  const t0 = Math.min(...all), t1 = Math.max(...all);
+  const X = x => 50 + (x - t0) / Math.max(t1 - t0, 1) * (W - 60);
+  const vals = series.v.concat(series.raw).concat(extra.flatMap(e => e.v));
+  const Y = scaler(vals, top, bottom);
+  for (let i = 0; i < t.length; i++) {
+    if (series.q[i] & FLAG_BITS) {
+      const w = i + 1 < t.length ? X(t[i + 1]) - X(t[i]) : 4;
+      el("rect", {x:X(t[i]), y:top, width:Math.max(w, 2), height:bottom - top, fill:"#f2c4c3"}, svg);
+    }
+  }
+  el("line", {x1:50, y1:bottom, x2:W - 10, y2:bottom, stroke:"#9aa3ad"}, svg);
+  const v = series.v.filter(x => x !== null);
+  el("text", {x:2, y:top + 10}, svg).textContent = Math.max(...v).toFixed(2);
+  el("text", {x:2, y:bottom}, svg).textContent = Math.min(...v).toFixed(2);
+  el("text", {x:50, y:h - 6}, svg).textContent = series.t[0] || "";
+  el("text", {x:W - 170, y:h - 6}, svg).textContent = series.t[series.t.length - 1] || "";
+  const path = (ts, vs, color, dash, width) => {
+    let d = "";
+    for (let i = 0; i < ts.length; i++) if (vs[i] !== null) d += (d ? "L" : "M") + X(ts[i]).toFixed(1) + "," + Y(vs[i]).toFixed(1);
+    if (d) el("path", {d:d, fill:"none", stroke:color, "stroke-width":width, "stroke-dasharray":dash || ""}, svg);
+  };
+  if (series.raw.length) for (let i = 0; i < t.length; i++)
+    if (series.raw[i] !== series.v[i]) el("circle", {cx:X(t[i]), cy:Y(series.raw[i]), r:2, fill:"#9aa3ad"}, svg);
+  path(t, series.v, "#1f5fa8", "", 1.6);
+  for (let i = 0; i < t.length; i++)
+    if (series.q[i] & 64) el("circle", {cx:X(t[i]), cy:Y(series.v[i]), r:2.4, fill:"var(--rec)"}, svg);
+  for (const e of extra) path(e.t.map(s => Date.parse(s)), e.v, e.color, e.dash, 1.4);
+}
+async function drawSeries() {
+  if (!selected) return;
+  const d = await getJSON("/api/series/" + encodeURIComponent(selected));
+  drawSeries2(document.getElementById("chart"), 330, d.measured, [{...d.simulated, color:"#2f8f4e", dash:"5 3"}]);
+  const r = d.residual;
+  drawSeries2(document.getElementById("resid"), 140, {t:r.t, v:r.v, q:r.t.map(() => 0), raw:[]}, []);
+}
+async function drawCounters() {
+  const d = await getJSON("/api/counters");
+  const tab = document.getElementById("counters");
+  tab.innerHTML = "<tr><th>policy</th><th>binary B</th><th>JSON B</th><th>frames</th></tr>";
+  for (const p of ["raw", "validated", "delta", "summary"]) {
+    const s = (d.policies || {})[p];
+    if (!s) continue;
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${p}</td><td>${s.binary_bytes.toLocaleString()}</td><td>${s.json_bytes.toLocaleString()}</td><td>${s.frames.toLocaleString()}</td>`;
+    tab.appendChild(tr);
+  }
+}
+async function drawEvents() {
+  const d = await getJSON("/api/events");
+  const ul = document.getElementById("events");
+  ul.innerHTML = d.length ? "" : "<li>none yet</li>";
+  for (const e of d.slice(0, 12)) {
+    const li = document.createElement("li");
+    li.textContent = `${e.t.slice(0, 16).replace("T", " ")}  ${e.type.replace("_", " ")}: ${e.sensors.join(", ")}`;
+    li.style.color = e.type === "sensor_fault" ? "var(--bad)" : "var(--shift)";
+    ul.appendChild(li);
+  }
+}
+document.getElementById("sensor").addEventListener("change", e => { selected = e.target.value; drawSeries(); });
+async function tick() {
+  try {
+    await drawNetwork(); await drawSeries(); await drawCounters(); await drawEvents();
+    document.getElementById("status").textContent = "reading SensorThings, updated " + new Date().toLocaleTimeString();
+  } catch (err) {
+    document.getElementById("status").textContent = "error: " + err.message;
+  }
+}
+tick();
+setInterval(tick, 4000);
+</script>
+</body>
+</html>

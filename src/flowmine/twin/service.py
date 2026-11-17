@@ -2,9 +2,10 @@
 
 * replay: read stored observations for a window, run the bridge as fast as it goes,
   publish the simulated, residual and virtual-sensor streams;
-* live: subscribe to the boundary Datastreams over MQTT and advance one period each
-  time every boundary stream has reported for it (or ``wait_steps`` periods later,
-  in which case the step uses what is there and is marked degraded).
+* live: subscribe to the measured Datastreams over MQTT and advance one period each
+  time every boundary stream due at that period has reported (or once data
+  ``wait_steps`` periods later have arrived; the step then uses what is there). The
+  other measured streams give the residuals.
 """
 
 from __future__ import annotations
@@ -100,6 +101,7 @@ class LiveTwin:
         wn = network.load_network(cfg.network.inp)
         self.b = boundary_from(wn, sensors)
         self.streams = boundary_streams(self.b)
+        self.period = {s.sensor_id: s.period_s for s in sensors}
         self.builder = StepBuilder(self.b)
         nodes, links = report_elements(sensors, virtual)
         self.step_s = cfg.network.hydraulic_step_s
@@ -114,11 +116,13 @@ class LiveTwin:
         self.seen.append(row)
 
     def ready(self, wait_steps: int) -> bool:
+        """All streams due at the current period have reported, or ``wait_steps`` passed."""
         if not self.seen:
             return False
         latest = max(r["time_s"] for r in self.seen)
         have = {r["stream"] for r in self.seen if r["time_s"] == self.t}
-        return set(self.streams) <= have or latest >= self.t + wait_steps * self.step_s
+        due = {s for s in self.streams if self.t % self.period[s] == 0}
+        return due <= have or latest >= self.t + wait_steps * self.step_s
 
     def step(self) -> tuple[int, dict[str, float], dict[str, float]]:
         """Advance one period; returns (t, simulated row, measured values at t)."""
@@ -141,14 +145,14 @@ def live(
     port: int,
     t0: int,
     duration_s: int,
-    wait_steps: int = 3,
+    wait_steps: int = 12,
     idle_timeout_s: float = 60.0,
 ) -> int:
     """Run until no observation arrives for ``idle_timeout_s`` seconds."""
     m = load_map(client)
     sensors = sensors_from_things(station_things(client))
     twin = LiveTwin(cfg, sensors, virtual_nodes_of(m), t0, duration_s)
-    names = {m.datastreams[s]: s for s in twin.streams}
+    names = {m.datastreams[s.sensor_id]: s.sensor_id for s in sensors}
     inbox: queue.Queue[dict[str, Any]] = queue.Queue()
     mq = StaMqtt(host, port, client_id="flowmine-twin")
     mq.subscribe(list(names), lambda ds, body: inbox.put(observation_row(names[ds], body, start)))

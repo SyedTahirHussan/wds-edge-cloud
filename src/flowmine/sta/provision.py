@@ -11,6 +11,7 @@ uses:
     VIRT-<node>                twin: simulated pressure at an unmonitored node
     WEATHER                    hourly air temperature (external source)
     EVENTS                     events raised by the central analytics
+    UPLINK-STATS               byte counters per station and uplink policy (demo)
 """
 
 from __future__ import annotations
@@ -207,6 +208,7 @@ def provision(
     )
     m.things["Central"] = tid
     stream("EVENTS", "event", "event", tid, "analytics", {})
+    stream("UPLINK-STATS", "event", "uplink_statistics", tid, "analytics", {})
     log.info("provisioned %d things, %d datastreams", len(m.things), len(m.datastreams))
     return m
 

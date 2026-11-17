@@ -6,6 +6,7 @@ import argparse
 import logging
 import sys
 from collections.abc import Callable, Sequence
+from datetime import datetime
 from pathlib import Path
 
 from flowmine.config import load_config
@@ -72,6 +73,110 @@ def _exp_footprint(args: argparse.Namespace) -> int:
     return 0
 
 
+def _start(cfg_path: str) -> datetime:
+    return datetime.fromisoformat(load_config(cfg_path).network.start)
+
+
+def _edge_run(args: argparse.Namespace) -> int:
+    from flowmine.edge import service
+
+    return service.run(
+        load_config(args.config),
+        args.seed,
+        args.station,
+        args.gateway,
+        Path(args.registry),
+        args.t0,
+        args.t1,
+        args.speed,
+        args.policy,
+        Path(args.store),
+    )
+
+
+def _gateway(args: argparse.Namespace) -> int:
+    import uvicorn
+
+    from flowmine.hybrid.registry import ModelRegistry
+    from flowmine.sta.client import StaClient
+    from flowmine.sta.gateway_app import create_app
+    from flowmine.sta.provision import load_map
+    from flowmine.testbed import build
+
+    cfg = load_config(args.config)
+    tb = build.ensure(cfg, args.seed, Path(args.data))
+    client = StaClient(args.url)
+    app = create_app(
+        client,
+        load_map(client),
+        tb.stations,
+        tb.sensors,
+        _start(args.config),
+        ModelRegistry(Path(args.registry)) if args.registry else None,
+    )
+    uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="warning")
+    return 0
+
+
+def _central_run(args: argparse.Namespace) -> int:
+    from flowmine.central import service
+    from flowmine.sta.client import StaClient
+
+    n = service.run(
+        StaClient(args.url), load_config(args.config), args.seed, _start(args.config), args.interval
+    )
+    print(f"central analytics posted {n} events")
+    return 0
+
+
+def _twin_run(args: argparse.Namespace) -> int:
+    from urllib.parse import urlsplit
+
+    from flowmine.sta.client import StaClient
+    from flowmine.twin import service
+
+    cfg = load_config(args.config)
+    client = StaClient(args.url)
+    if args.mode == "replay":
+        n = service.replay(client, cfg, _start(args.config), args.t0, args.t1)
+    else:
+        host = urlsplit(args.url).hostname or "localhost"
+        n = service.live(
+            client, cfg, _start(args.config), host, args.mqtt_port, args.t0, args.t1 - args.t0 + 600
+        )
+    print(f"twin posted {n} observations")
+    return 0
+
+
+def _dashboard(args: argparse.Namespace) -> int:
+    import uvicorn
+
+    from flowmine.dashboard.app import create_app
+    from flowmine.sta.client import StaClient
+
+    app = create_app(StaClient(args.url), load_config(args.config).network.inp)
+    print(f"dashboard on http://127.0.0.1:{args.port}/")
+    uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="warning")
+    return 0
+
+
+def _demo(args: argparse.Namespace) -> int:
+    from flowmine import demo
+
+    return demo.run(
+        load_config(args.config),
+        args.config,
+        args.url,
+        args.seed,
+        args.hours,
+        args.speed,
+        args.gateway_port,
+        args.dashboard_port,
+        args.keep,
+        Path(args.data),
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="flowmine", description=__doc__)
     p.add_argument("-v", "--verbose", action="store_true")
@@ -116,6 +221,65 @@ def build_parser() -> argparse.ArgumentParser:
     fp.add_argument("--out", default="results/edge_footprint.csv")
     fp.add_argument("--seed", type=int, default=1)
     fp.set_defaults(func=_exp_footprint)
+
+    def common(q: argparse.ArgumentParser, url: bool = True) -> None:
+        q.add_argument("--config", default="configs/default.yaml")
+        q.add_argument("--seed", type=int, default=1)
+        q.add_argument("--data", default="data")
+        if url:
+            q.add_argument("--url", default=FROST_URL)
+
+    ed = groups.add_parser("edge", help="edge station").add_subparsers(dest="cmd", required=True)
+    er = ed.add_parser("run", help="run one station process (demo)")
+    common(er, url=False)
+    er.add_argument("--station", required=True)
+    er.add_argument("--gateway", required=True)
+    er.add_argument("--registry", required=True)
+    er.add_argument("--t0", type=int, required=True)
+    er.add_argument("--t1", type=int, required=True)
+    er.add_argument("--speed", type=float, default=600.0)
+    er.add_argument("--policy", default="validated")
+    er.add_argument("--store", default="data/stations")
+    er.set_defaults(func=_edge_run)
+
+    gw = groups.add_parser("gateway", help="frame decoder and SensorThings forwarder")
+    common(gw)
+    gw.add_argument("--port", type=int, default=8090)
+    gw.add_argument("--registry", default="")
+    gw.set_defaults(func=_gateway)
+
+    ce = groups.add_parser("central", help="central analytics").add_subparsers(
+        dest="cmd", required=True
+    )
+    cr = ce.add_parser("run", help="analytics loop on live SensorThings data")
+    common(cr)
+    cr.add_argument("--interval", type=float, default=5.0)
+    cr.set_defaults(func=_central_run)
+
+    tw = groups.add_parser("twin", help="SensorThings-EPANET bridge").add_subparsers(
+        dest="cmd", required=True
+    )
+    tr = tw.add_parser("run", help="run the bridge (replay stored data or live via MQTT)")
+    common(tr)
+    tr.add_argument("--mode", choices=["replay", "live"], default="replay")
+    tr.add_argument("--t0", type=int, required=True)
+    tr.add_argument("--t1", type=int, required=True)
+    tr.add_argument("--mqtt-port", type=int, default=1883)
+    tr.set_defaults(func=_twin_run)
+
+    db = groups.add_parser("dashboard", help="local live web view")
+    common(db)
+    db.add_argument("--port", type=int, default=8050)
+    db.set_defaults(func=_dashboard)
+
+    dm = groups.add_parser("demo", help="full system against FROST-Server")
+    common(dm)
+    dm.add_argument("--hours", type=float, default=48.0)
+    dm.add_argument("--speed", type=float, default=1200.0)
+    dm.add_argument("--gateway-port", type=int, default=8090)
+    dm.add_argument("--dashboard-port", type=int, default=8050)
+    dm.add_argument("--keep", action="store_true", help="keep the dashboard running afterwards")
+    dm.set_defaults(func=_demo)
     return p
 
 

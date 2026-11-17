@@ -49,6 +49,7 @@ class BridgeSensor:
     station: str
     tank_area_m2: float | None = None
     inflow_sign: float = 1.0
+    period_s: int = 300
 
 
 def sensors_from_things(things: list[dict[str, object]]) -> list[BridgeSensor]:
@@ -67,6 +68,7 @@ def sensors_from_things(things: list[dict[str, object]]) -> list[BridgeSensor]:
                     str(t["name"]),
                     props.get("tank_area_m2"),
                     float(props.get("inflow_sign") or 1.0),
+                    int(s.get("period_s", 300)),
                 )
             )
     return out

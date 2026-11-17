@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from datetime import datetime
 
 import numpy as np
 
 from flowmine.config import Config
-from flowmine.edge.models import SensorModels
+from flowmine.edge.models import PackagedModels, SensorModels
 from flowmine.edge.node import EdgeNode, Link
 from flowmine.edge.store import LocalStore
 from flowmine.testbed.build import Testbed
@@ -42,7 +42,7 @@ def start_time(cfg: Config) -> datetime:
 def make_node(
     tb: Testbed,
     spec: StationSpec,
-    bundles: dict[str, SensorModels],
+    bundles: Mapping[str, SensorModels | PackagedModels],
     policy: str,
     forecaster: str = "hw",
     link: Link | None = None,
