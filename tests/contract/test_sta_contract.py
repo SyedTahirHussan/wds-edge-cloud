@@ -63,8 +63,9 @@ def test_provisioning_is_idempotent_and_maps_epanet(
     assert {t["name"] for t in tanks} >= {
         s.station_id for s in smoke_tb.stations if s.station_class == "tank"
     }
+    cl = next(s.sensor_id for s in smoke_tb.sensors if s.kind == "chlorine")
     ds = sta.get(
-        f"Datastreams({m1.datastreams['LAB-' + next(s.sensor_id for s in smoke_tb.sensors if s.kind == 'chlorine')]})",
+        f"Datastreams({m1.datastreams['LAB-' + cl]})",
         {"$expand": "Sensor,ObservedProperty"},
     )
     assert ds["Sensor"]["name"] == "laboratory method"
@@ -108,7 +109,7 @@ def test_quality_model_version_and_lab_delay_roundtrip(sta: StaClient) -> None:
     r1, r2 = df.iloc[0], df.iloc[1]
     assert r1.quality == code and r1.model_version == 7 and bool(r1.reconstructed)
     assert r2.result_s - r2.time_s == 30 * 3600
-    full = list(sta.observations(ds))[0]
+    full = next(iter(sta.observations(ds)))
     assert full["parameters"]["raw"] == pytest.approx(0.9)
     assert full["resultQuality"]["flags"] == ["MODEL_RESIDUAL", "RECONSTRUCTED"]
 
@@ -117,7 +118,7 @@ def test_maintenance_record_as_json_result(sta: StaClient) -> None:
     ds = _stream(sta, "maintenance")
     rec = {"type": "valve_operation", "asset": "169", "note": "isolation valve closed, 3.2 h"}
     sta.post_observations([mapping.observation_body(START, 3600, rec, datastream_id=ds)])
-    got = list(sta.observations(ds))[0]["result"]
+    got = next(iter(sta.observations(ds)))["result"]
     assert got == rec
 
 

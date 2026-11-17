@@ -214,9 +214,11 @@ class FakeSta:
         res = self.resolve(es)
         keys = odata.order_key(params.get("$orderby", "@iot.id"))
         for p, desc in reversed(keys):
-            items = sorted(
-                items, key=lambda e, p=p: _sort_key(odata.parse_time(res(e, p))), reverse=desc
-            )
+
+            def key(e: dict[str, Any], p: list[str] = p) -> tuple[int, Any]:
+                return _sort_key(odata.parse_time(res(e, p)))
+
+            items = sorted(items, key=key, reverse=desc)
         top = min(int(params.get("$top", DEFAULT_TOP)), MAX_TOP)
         skip = int(params.get("$skip", 0))
         page = items[skip : skip + top]

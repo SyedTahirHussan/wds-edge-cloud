@@ -11,6 +11,7 @@ from pathlib import Path
 from flowmine.config import load_config
 
 Handler = Callable[[argparse.Namespace], int]
+FROST_URL = "http://localhost:8080/FROST-Server/v1.1"
 
 
 def _testbed_build(args: argparse.Namespace) -> int:
@@ -23,6 +24,26 @@ def _testbed_build(args: argparse.Namespace) -> int:
             f"seed {seed}: {tb.manifest['n_sensors']} sensors, {tb.manifest['n_faults']} faults, "
             f"{tb.manifest['n_events']} process events"
         )
+    return 0
+
+
+def _sta_wait(args: argparse.Namespace) -> int:
+    from flowmine.sta.client import StaClient
+
+    ok = StaClient(args.url).wait(args.timeout)
+    print(f"{args.url}: {'up' if ok else 'not answering'}")
+    return 0 if ok else 1
+
+
+def _sta_provision(args: argparse.Namespace) -> int:
+    from flowmine.sta.client import StaClient
+    from flowmine.sta.provision import provision
+    from flowmine.testbed import build
+
+    cfg = load_config(args.config)
+    tb = build.ensure(cfg, args.seed, Path(args.data))
+    m = provision(StaClient(args.url), cfg, tb.sensors, tb.stations)
+    print(f"{len(m.things)} things, {len(m.datastreams)} datastreams")
     return 0
 
 
@@ -39,6 +60,20 @@ def build_parser() -> argparse.ArgumentParser:
     b.add_argument("--data", default="data")
     b.add_argument("--seeds", type=int, nargs="*")
     b.set_defaults(func=_testbed_build)
+
+    sta = groups.add_parser("sta", help="SensorThings server").add_subparsers(
+        dest="cmd", required=True
+    )
+    w = sta.add_parser("wait", help="wait until the server answers")
+    w.add_argument("--url", default=FROST_URL)
+    w.add_argument("--timeout", type=float, default=180.0)
+    w.set_defaults(func=_sta_wait)
+    pv = sta.add_parser("provision", help="create all entities for a testbed seed")
+    pv.add_argument("--url", default=FROST_URL)
+    pv.add_argument("--config", default="configs/default.yaml")
+    pv.add_argument("--data", default="data")
+    pv.add_argument("--seed", type=int, default=1)
+    pv.set_defaults(func=_sta_provision)
     return p
 
 
