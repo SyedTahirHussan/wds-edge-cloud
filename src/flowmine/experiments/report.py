@@ -175,7 +175,15 @@ def findings(d: dict[str, pd.DataFrame]) -> list[str]:
     )
     e2 = d["e2_reconstruction"]
     cross = e2.groupby("seed").crossover_min.first()
-    p = e2[e2.kind == "pressure"].groupby(["gap_min", "method"]).mae.mean().unstack()
+    # Mean over seeds of the per-seed mean, as in the E2 table.
+    p = (
+        e2[e2.kind == "pressure"]
+        .groupby(["seed", "gap_min", "method"])
+        .mae.mean()
+        .groupby(["gap_min", "method"])
+        .mean()
+        .unstack()
+    )
     longest = p.index.max()
     out.append(
         f"Reconstruction: the calibration week puts the temporal/spatial crossover at "

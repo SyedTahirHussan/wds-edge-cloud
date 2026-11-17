@@ -13,7 +13,7 @@ All data are simulated from the EPANET benchmark network Net3. Nothing here has 
 a utility or on a microcontroller: the edge code was tested under the MicroPython
 Unix port on a laptop.
 
-I wrote it to understand the three phases of the i3WaterS DC11 doctoral project
+I built it to understand the three phases of the i3WaterS DC11 doctoral project
 (Distributed and centralized data mining for WDS in the context of IoT and Big data,
 UPC) concretely before discussing them with the supervisors.
 
@@ -90,7 +90,7 @@ Configuration `default`, seeds 1, 2, 3, 4, 5; mean ± sample standard deviation 
 - drift: recall 0.01 at the edge (Holt-Winters) against 0.28 in the cloud; the cloud detects it better.
 - spike: recall 0.82 at the edge (Holt-Winters) against 0.53 in the cloud; the edge detects it better.
 - False-alarm rate on clean samples: hybrid 0.0406, edge Holt-Winters 0.0055, central 0.0354.
-- Reconstruction: the calibration week puts the temporal/spatial crossover at 276 ± 277 min. For 1440-min pressure gaps the MAE is 0.524 m (Holt-Winters), 0.257 m (spatial) and 5.683 m (linear interpolation, which needs the future).
+- Reconstruction: the calibration week puts the temporal/spatial crossover at 276 ± 277 min. For 1440-min pressure gaps the MAE is 0.499 m (Holt-Winters), 0.281 m (spatial) and 4.930 m (linear interpolation, which needs the future).
 - Uplink: delta sends 0.36 of the bytes of the validated policy; SensorThings JSON is 34 times the binary frame size for the same records.
 - Cold-start station, one-step RMSE: local 2.220 m, centralised 1.705 m, federated 2.136 m, federated with fine-tuning 2.102 m.
 - Twin state error at unmonitored nodes: raw 0.92 m, edge-validated 0.67 m, hybrid 0.64 m, clean 0.47 m.
