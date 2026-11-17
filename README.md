@@ -1,5 +1,7 @@
 # wds-edge-cloud
 
+[![ci](https://github.com/SyedTahirHussan/wds-edge-cloud/actions/workflows/ci.yml/badge.svg)](https://github.com/SyedTahirHussan/wds-edge-cloud/actions/workflows/ci.yml)
+
 `flowmine` is a working prototype of edge and cloud data validation for water
 distribution systems. It contains:
 
