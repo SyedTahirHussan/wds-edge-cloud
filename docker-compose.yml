@@ -1,0 +1,41 @@
+# FROST-Server (SensorThings API v1.1, HTTP on 8080, MQTT on 1883) with PostGIS.
+# Image tags are pinned. Settings follow the FROST-Server docker documentation;
+# environment variable names are the setting names with dots replaced by underscores.
+name: wds-edge-cloud
+services:
+  frost:
+    image: fraunhoferiosb/frost-server:2.8.2
+    environment:
+      - serviceRootUrl=http://localhost:8080/FROST-Server
+      - http_cors_enable=true
+      - http_cors_allowed_origins=*
+      - persistence_db_driver=org.postgresql.Driver
+      - persistence_db_url=jdbc:postgresql://database:5432/sensorthings
+      - persistence_db_username=sensorthings
+      - persistence_db_password=sensorthings
+      - persistence_autoUpdateDatabase=true
+      - persistence_countMode=LIMIT_ESTIMATE
+      - maxTop=10000
+    ports:
+      - "8080:8080"
+      - "1883:1883"
+    depends_on:
+      database:
+        condition: service_healthy
+
+  database:
+    image: imresamu/postgis:16-3.5
+    environment:
+      - POSTGRES_DB=sensorthings
+      - POSTGRES_USER=sensorthings
+      - POSTGRES_PASSWORD=sensorthings
+    volumes:
+      - postgis_volume:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d sensorthings -U sensorthings"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+volumes:
+  postgis_volume:
