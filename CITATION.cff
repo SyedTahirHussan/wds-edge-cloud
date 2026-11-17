@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "wds-edge-cloud (flowmine): edge and cloud data validation and a SensorThings-EPANET bridge for water distribution systems, on simulated data"
+type: software
+authors:
+  - family-names: "Hussan"
+    given-names: "Syed Tahir"
+repository-code: "https://github.com/SyedTahirHussan/wds-edge-cloud"
+license: MIT
+version: 0.1.0
+keywords:
+  - water distribution systems
+  - data validation
+  - edge computing
+  - SensorThings API
+  - EPANET
+  - MicroPython

@@ -1,0 +1,6 @@
+seed,false_alarms_without_log,false_alarms_with_log,fault_alarms_suppressed,operations
+1,496,493,0,2
+2,1607,1571,0,2
+3,2437,2239,29,1
+4,738,630,0,2
+5,392,299,0,2

@@ -1,0 +1,177 @@
+# Results summary
+
+Configuration `default`, seeds 1, 2, 3, 4, 5; mean ± sample standard deviation over seeds; test week only unless stated.
+
+## Key numbers
+
+- Overall sample F1 (non-gap faults): Hybrid fusion is highest (0.427); the edge-only methods reach 0.153 (Holt-Winters) and 0.153 (neural), the central methods 0.393.
+- bias: recall 0.01 at the edge (Holt-Winters) against 0.62 in the cloud; the cloud detects it better.
+- drift: recall 0.01 at the edge (Holt-Winters) against 0.28 in the cloud; the cloud detects it better.
+- spike: recall 0.82 at the edge (Holt-Winters) against 0.53 in the cloud; the edge detects it better.
+- False-alarm rate on clean samples: hybrid 0.0406, edge Holt-Winters 0.0055, central 0.0354.
+- Reconstruction: the calibration week puts the temporal/spatial crossover at 276 ± 277 min. For 1440-min pressure gaps the MAE is 0.524 m (Holt-Winters), 0.257 m (spatial) and 5.683 m (linear interpolation, which needs the future).
+- Uplink: delta sends 0.36 of the bytes of the validated policy; SensorThings JSON is 34 times the binary frame size for the same records.
+- Cold-start station, one-step RMSE: local 2.100 m, centralised 1.666 m, federated 2.117 m, federated with fine-tuning 2.028 m.
+- Twin state error at unmonitored nodes: raw 0.92 m, edge-validated 0.67 m, hybrid 0.64 m, clean 0.47 m.
+- Process events: share of event samples reconstructed away central_only 0.016, edge_only 0.010, hybrid 0.011; share of sensor faults raised as events central_only 0.52, edge_only 0.42, hybrid 0.54.
+
+## E1 detection (overall, non-gap faults)
+
+| method | precision | recall | F1 | event recall | event precision | delay (min) | false-alarm rate | alarms on process events |
+|---|---|---|---|---|---|---|---|---|
+| Rule tests only | 0.745 ± 0.082 | 0.078 ± 0.008 | 0.142 ± 0.014 | 0.300 ± 0.079 | 0.146 ± 0.047 | 94.308 ± 119.008 | 0.002 ± 0.001 | 0.002 ± 0.001 |
+| Edge, Holt-Winters | 0.523 ± 0.041 | 0.090 ± 0.009 | 0.153 ± 0.014 | 0.760 ± 0.065 | 0.107 ± 0.020 | 189.218 ± 84.023 | 0.005 ± 0.001 | 0.008 ± 0.002 |
+| Edge, neural | 0.513 ± 0.058 | 0.090 ± 0.010 | 0.153 ± 0.017 | 0.740 ± 0.102 | 0.108 ± 0.024 | 109.134 ± 58.190 | 0.006 ± 0.001 | 0.007 ± 0.002 |
+| Central (spatial + lab) | 0.499 ± 0.231 | 0.367 ± 0.138 | 0.393 ± 0.140 | 0.440 ± 0.195 | 0.131 ± 0.032 | 126.414 ± 219.748 | 0.035 ± 0.039 | 0.067 ± 0.025 |
+| Hybrid fusion | 0.470 ± 0.209 | 0.428 ± 0.078 | 0.427 ± 0.103 | 0.650 ± 0.137 | 0.095 ± 0.028 | 197.483 ± 138.301 | 0.041 ± 0.029 | 0.082 ± 0.051 |
+
+### E1 by fault type
+
+| method | fault_type | recall | F1 | delay (min) |
+|---|---|---|---|---|
+| Rule tests only | gap_short | 1.00 ± 0.00 | 0.54 ± 0.04 | 0.00 ± 0.00 |
+| Rule tests only | gap_long | 1.00 ± 0.00 | 0.93 ± 0.03 | 0.00 ± 0.00 |
+| Rule tests only | stuck | 0.82 ± 0.03 | 0.77 ± 0.06 | 54.67 ± 12.55 |
+| Rule tests only | spike | 0.23 ± 0.16 | 0.07 ± 0.05 | 0.00 ± 0.00 |
+| Rule tests only | drift | 0.01 ± 0.02 | 0.02 ± 0.04 | 1275.00 |
+| Rule tests only | bias | 0.00 ± 0.00 | 0.00 ± 0.00 | 247.50 ± 251.02 |
+| Rule tests only | noise_burst | 0.11 ± 0.10 | 0.11 ± 0.11 | 5.00 ± 8.66 |
+| Edge, Holt-Winters | gap_short | 1.00 ± 0.00 | 0.27 ± 0.05 | 0.00 ± 0.00 |
+| Edge, Holt-Winters | gap_long | 1.00 ± 0.00 | 0.83 ± 0.04 | 0.00 ± 0.00 |
+| Edge, Holt-Winters | stuck | 0.81 ± 0.03 | 0.58 ± 0.05 | 61.67 ± 4.08 |
+| Edge, Holt-Winters | spike | 0.82 ± 0.14 | 0.10 ± 0.01 | 0.00 ± 0.00 |
+| Edge, Holt-Winters | drift | 0.01 ± 0.02 | 0.02 ± 0.03 | 1087.00 ± 463.42 |
+| Edge, Holt-Winters | bias | 0.01 ± 0.00 | 0.01 ± 0.01 | 390.00 ± 411.97 |
+| Edge, Holt-Winters | noise_burst | 0.24 ± 0.10 | 0.14 ± 0.04 | 7.17 ± 9.82 |
+| Edge, neural | gap_short | 1.00 ± 0.00 | 0.26 ± 0.06 | 0.00 ± 0.00 |
+| Edge, neural | gap_long | 1.00 ± 0.00 | 0.82 ± 0.08 | 0.00 ± 0.00 |
+| Edge, neural | stuck | 0.82 ± 0.03 | 0.58 ± 0.04 | 54.67 ± 12.55 |
+| Edge, neural | spike | 0.93 ± 0.11 | 0.11 ± 0.03 | 0.00 ± 0.00 |
+| Edge, neural | drift | 0.01 ± 0.02 | 0.02 ± 0.03 | 947.50 ± 547.06 |
+| Edge, neural | bias | 0.00 ± 0.00 | 0.01 ± 0.01 | 595.00 ± 220.34 |
+| Edge, neural | noise_burst | 0.25 ± 0.12 | 0.14 ± 0.05 | 7.50 ± 11.18 |
+| Central (spatial + lab) | gap_short | 1.00 ± 0.00 | 0.09 ± 0.05 | 0.00 ± 0.00 |
+| Central (spatial + lab) | gap_long | 1.00 ± 0.00 | 0.53 ± 0.28 | 0.00 ± 0.00 |
+| Central (spatial + lab) | stuck | 0.15 ± 0.21 | 0.06 ± 0.11 | 134.17 ± 18.43 |
+| Central (spatial + lab) | spike | 0.53 ± 0.32 | 0.01 ± 0.01 | 0.00 ± 0.00 |
+| Central (spatial + lab) | drift | 0.28 ± 0.18 | 0.27 ± 0.19 | 735.00 ± 1144.04 |
+| Central (spatial + lab) | bias | 0.62 ± 0.41 | 0.36 ± 0.30 | 0.00 ± 0.00 |
+| Central (spatial + lab) | noise_burst | 0.24 ± 0.26 | 0.05 ± 0.05 | 19.72 ± 15.42 |
+| Hybrid fusion | gap_short | 1.00 ± 0.00 | 0.07 ± 0.06 | 0.00 ± 0.00 |
+| Hybrid fusion | gap_long | 1.00 ± 0.00 | 0.48 ± 0.26 | 0.00 ± 0.00 |
+| Hybrid fusion | stuck | 0.61 ± 0.21 | 0.19 ± 0.16 | 72.33 ± 13.00 |
+| Hybrid fusion | spike | 0.50 ± 0.29 | 0.02 ± 0.02 | 0.00 ± 0.00 |
+| Hybrid fusion | drift | 0.31 ± 0.09 | 0.28 ± 0.08 | 793.00 ± 321.10 |
+| Hybrid fusion | bias | 0.66 ± 0.39 | 0.35 ± 0.28 | 176.67 ± 382.13 |
+| Hybrid fusion | noise_burst | 0.31 ± 0.24 | 0.05 ± 0.05 | 26.17 ± 19.49 |
+
+## E2 reconstruction MAE by gap length
+
+### pressure (m)
+
+| gap (min) | last_value | linear_offline | seasonal_naive | holt_winters | mlp | spatial | hybrid |
+|---|---|---|---|---|---|---|---|
+| 15 | 0.222 ± 0.207 | 0.192 ± 0.283 | 1.816 ± 3.445 | 0.261 ± 0.184 | 0.193 ± 0.063 | 0.441 ± 0.285 | 0.261 ± 0.184 |
+| 60 | 0.598 ± 0.908 | 0.508 ± 0.949 | 0.434 ± 0.237 | 0.446 ± 0.456 | 0.504 ± 0.277 | 0.582 ± 0.481 | 0.640 ± 0.474 |
+| 180 | 1.097 ± 0.625 | 0.491 ± 0.427 | 0.553 ± 0.221 | 0.629 ± 0.401 | 0.952 ± 0.245 | 0.232 ± 0.206 | 0.471 ± 0.469 |
+| 360 | 4.323 ± 3.753 | 2.437 ± 1.692 | 0.813 ± 0.979 | 1.372 ± 0.957 | 1.983 ± 1.641 | 0.402 ± 0.301 | 0.618 ± 0.728 |
+| 720 | 4.345 ± 2.337 | 3.085 ± 1.331 | 0.718 ± 0.423 | 1.410 ± 0.398 | 4.733 ± 3.077 | 0.179 ± 0.095 | 0.179 ± 0.095 |
+| 1440 | 4.867 ± 5.383 | 4.930 ± 5.403 | 0.574 ± 0.282 | 0.499 ± 0.163 | 3.462 ± 4.807 | 0.281 ± 0.227 | 0.281 ± 0.227 |
+
+### flow (L/s)
+
+| gap (min) | last_value | linear_offline | seasonal_naive | holt_winters | mlp | spatial | hybrid |
+|---|---|---|---|---|---|---|---|
+| 15 | 2.570 ± 1.995 | 0.745 ± 0.445 | 26.100 ± 31.831 | 14.431 ± 10.703 | 4.142 ± 1.353 | 13.303 ± 9.793 | 14.431 ± 10.703 |
+| 60 | 8.363 ± 7.097 | 3.694 ± 3.140 | 7.731 ± 4.518 | 8.611 ± 6.803 | 9.568 ± 6.722 | 9.656 ± 8.091 | 9.935 ± 7.920 |
+| 180 | 34.315 ± 31.870 | 14.860 ± 13.192 | 8.620 ± 6.085 | 13.788 ± 6.274 | 15.099 ± 8.783 | 8.071 ± 6.642 | 13.053 ± 9.406 |
+| 360 | 86.962 ± 45.134 | 46.460 ± 27.758 | 20.622 ± 16.302 | 13.850 ± 6.657 | 22.624 ± 21.349 | 5.475 ± 2.567 | 6.844 ± 2.901 |
+| 720 | 93.811 ± 41.843 | 67.154 ± 24.342 | 11.431 ± 10.299 | 11.889 ± 10.361 | 13.292 ± 8.875 | 7.193 ± 10.341 | 7.193 ± 10.341 |
+| 1440 | 103.268 ± 7.652 | 103.476 ± 7.473 | 11.883 ± 20.523 | 3.996 ± 2.563 | 15.882 ± 16.196 | 2.294 ± 2.051 | 2.294 ± 2.051 |
+
+### level (m)
+
+| gap (min) | last_value | linear_offline | seasonal_naive | holt_winters | mlp | spatial | hybrid |
+|---|---|---|---|---|---|---|---|
+| 15 | 0.081 ± 0.057 | 0.006 ± 0.001 | 0.321 ± 0.166 | 0.022 ± 0.013 | 0.021 ± 0.014 | 0.320 ± 0.205 | 0.022 ± 0.013 |
+| 60 | 0.435 ± 0.274 | 0.045 ± 0.020 | 0.585 ± 0.267 | 0.047 ± 0.020 | 0.053 ± 0.028 | 0.350 ± 0.429 | 0.298 ± 0.462 |
+| 180 | 0.440 ± 0.429 | 0.110 ± 0.066 | 0.238 ± 0.159 | 0.097 ± 0.024 | 0.073 ± 0.024 | 0.233 ± 0.164 | 0.195 ± 0.166 |
+| 360 | 1.212 ± 0.335 | 0.645 ± 0.282 | 0.673 ± 0.284 | 0.203 ± 0.056 | 0.244 ± 0.166 | 0.237 ± 0.108 | 0.202 ± 0.094 |
+| 720 | 1.632 ± 0.998 | 0.910 ± 0.609 | 0.332 ± 0.159 | 0.201 ± 0.081 | 0.257 ± 0.167 | 0.206 ± 0.076 | 0.206 ± 0.076 |
+| 1440 | 0.860 ± 0.374 | 0.895 ± 0.430 | 0.243 ± 0.252 | 0.314 ± 0.055 | 0.120 ± 0.039 | 0.132 ± 0.001 | 0.132 ± 0.001 |
+
+## E3 uplink policies
+
+| policy | binary B/station/day | JSON B/station/day | frames/station/day | frame fill (of 51 B) | latency (min) |
+|---|---|---|---|---|---|
+| raw | 2820.0 ± 9.6 | 96020.9 ± 392.7 | 95.9 ± 0.3 | 0.6 ± 0.0 | 14.0 ± 2.2 |
+| validated | 2878.2 ± 5.9 | 98116.7 ± 101.2 | 102.1 ± 1.0 | 0.6 ± 0.0 | 13.0 ± 2.7 |
+| delta | 1039.1 ± 73.3 | 28669.5 ± 2346.3 | 65.6 ± 3.3 | 0.3 ± 0.0 | 5.0 ± 0.0 |
+| summary | 2322.3 ± 27.9 | 56197.3 ± 1050.2 | 101.0 ± 0.8 | 0.5 ± 0.0 | 30.0 ± 0.0 |
+
+### E3 delta policy versus epsilon
+
+| eps_factor | binary B/station/day | error vs edge (fraction of range) | error vs truth (fraction of range) |
+|---|---|---|---|
+| 0.25 | 1719.8840 ± 92.1021 | 0.0022 ± 0.0001 | 0.0156 ± 0.0008 |
+| 0.5 | 1345.2000 ± 96.1819 | 0.0049 ± 0.0001 | 0.0169 ± 0.0009 |
+| 1.0 | 1039.0514 ± 73.2831 | 0.0097 ± 0.0006 | 0.0197 ± 0.0014 |
+| 2.0 | 827.7142 ± 47.8910 | 0.0153 ± 0.0016 | 0.0238 ± 0.0022 |
+| 4.0 | 710.8570 ± 33.0896 | 0.0200 ± 0.0030 | 0.0280 ± 0.0033 |
+
+## E4 outage
+
+| outage_h | architecture | fault events in outage | flagged during outage | samples kept | backlog (frames) | backfill (h) | cloud up to date after (h) |
+|---|---|---|---|---|---|---|---|
+| 6 | edge_store_forward | 2.60 ± 1.82 | 0.60 ± 0.89 | 1.00 ± 0.00 | 24.64 ± 0.43 | 0.82 ± 0.01 | 6.82 ± 0.01 |
+| 6 | centralised_raw | 2.60 ± 1.82 | 0.00 ± 0.00 | 1.00 ± 0.00 | 24.00 ± 0.00 | 0.80 ± 0.00 | 6.80 ± 0.00 |
+| 24 | edge_store_forward | 4.80 ± 2.17 | 2.80 ± 1.30 | 1.00 ± 0.00 | 101.23 ± 1.16 | 3.37 ± 0.04 | 27.37 ± 0.04 |
+| 24 | centralised_raw | 4.80 ± 2.17 | 0.00 ± 0.00 | 1.00 ± 0.00 | 96.01 ± 0.03 | 3.20 ± 0.00 | 27.20 ± 0.00 |
+
+## E5 training paradigms (pressure loggers)
+
+| paradigm | one-step RMSE (m) | day-ahead RMSE (m) | cold start one-step (m) | cold start day-ahead (m) | bytes up | bytes down |
+|---|---|---|---|---|---|---|
+| local | 0.658 ± 0.060 | 6.968 ± 0.880 | 2.100 ± 0.325 | 6.626 ± 1.777 | 0.000 ± 0.000 | 0.000 ± 0.000 |
+| centralised | 0.664 ± 0.046 | 5.127 ± 1.668 | 1.666 ± 0.137 | 19.934 ± 8.560 | 828630.000 ± 0.000 | 29592.000 ± 0.000 |
+| federated | 0.705 ± 0.040 | 3.678 ± 0.408 | 2.117 ± 0.161 | 9.672 ± 0.829 | 295920.000 ± 0.000 | 295920.000 ± 0.000 |
+| federated_finetuned | 0.660 ± 0.041 | 5.337 ± 2.343 | 2.028 ± 0.157 | 10.785 ± 1.033 | 295920.000 ± 0.000 | 295920.000 ± 0.000 |
+
+## E6 twin state estimation
+
+| input | RMSE monitored (m) | RMSE unmonitored (m) | 95th pct |error| (m) | degraded steps | resyncs |
+|---|---|---|---|---|---|
+| raw | 1.03 ± 0.46 | 0.92 ± 0.63 | 0.82 ± 0.52 | 0.06 ± 0.06 | 58.00 ± 32.95 |
+| edge_validated | 0.86 ± 0.06 | 0.67 ± 0.16 | 0.74 ± 0.34 | 0.00 ± 0.01 | 51.80 ± 39.33 |
+| hybrid_validated | 1.12 ± 0.40 | 0.64 ± 0.19 | 0.72 ± 0.22 | 0.00 ± 0.00 | 50.40 ± 45.91 |
+| clean | 0.59 ± 0.07 | 0.47 ± 0.14 | 0.37 ± 0.11 | 0.00 ± 0.00 | 36.20 ± 42.10 |
+
+## E7 process events versus sensor faults
+
+| architecture | process events raised | event samples reconstructed | events reconstructed away | faults raised as events |
+|---|---|---|---|---|
+| edge_only | 0.950 ± 0.112 | 0.010 ± 0.008 | 0.000 ± 0.000 | 0.424 ± 0.100 |
+| central_only | 0.500 ± 0.306 | 0.016 ± 0.017 | 0.000 ± 0.000 | 0.518 ± 0.238 |
+| hybrid | 0.850 ± 0.137 | 0.011 ± 0.010 | 0.000 ± 0.000 | 0.537 ± 0.215 |
+
+## Maintenance log (spatial alarms, test week)
+
+| spatial false alarms, no log | with log | fault alarms suppressed |
+|---|---|---|
+| 1134.0 ± 871.2 | 1046.4 ± 827.0 | 5.8 ± 13.0 |
+
+## External data (day-ahead total demand)
+
+| demand MAE without temperature (L/s) | with temperature (L/s) | mean demand (L/s) |
+|---|---|---|
+| 25.4 ± 9.8 | 25.3 ± 8.3 | 693.1 ± 27.2 |
+
+## Edge footprint
+
+Measured on a laptop (CPython 3.12 and the MicroPython Unix port) for one pressure sensor; these are not ESP32 timings.
+
+| forecaster | parameters | model bytes | buffer (samples) | µs/sample CPython | µs/sample MicroPython |
+|---|---|---|---|---|---|
+| seasonal_naive | 0 | 8064 | 2028 | 2.7 | 13.2 |
+| holt_winters | 4 | 9264 | 2316 | 2.9 | 18.2 |
+| mlp | 609 | 2466 | 300 | 27.9 | 118.4 |

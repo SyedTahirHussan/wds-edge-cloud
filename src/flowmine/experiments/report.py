@@ -380,6 +380,7 @@ def build(cfg: Config, results: Path) -> tuple[str, str]:
             "mean_demand_l_s": "mean demand (L/s)",
         },
     )
+    t_fp = footprint_table(results / "edge_footprint.csv")
     head = (
         f"Configuration `{cfg.name}`, seeds {', '.join(map(str, seeds))}; mean ± sample standard "
         "deviation over seeds; test week only unless stated."
@@ -414,6 +415,7 @@ def build(cfg: Config, results: Path) -> tuple[str, str]:
                 t_x1,
                 "## External data (day-ahead total demand)",
                 t_x2,
+                *(["## Edge footprint", t_fp] if t_fp else []),
             ]
         )
         + "\n"
@@ -432,6 +434,7 @@ def build(cfg: Config, results: Path) -> tuple[str, str]:
             t_e6,
             "**E7 process events**",
             t_e7,
+            *(["**Edge footprint**", t_fp] if t_fp else []),
             "![Recall by fault type](results/figures/e1_recall_by_fault.png)",
             "![Reconstruction error versus gap length]"
             "(results/figures/e2_reconstruction_vs_gap.png)",
@@ -441,6 +444,28 @@ def build(cfg: Config, results: Path) -> tuple[str, str]:
         ]
     )
     return summary, readme
+
+
+def footprint_table(path: Path) -> str:
+    """Table from ``edge_footprint.csv`` (written by ``flowmine experiments footprint``)."""
+    if not path.exists():
+        return ""
+    fp = pd.read_csv(path)
+    lines = [
+        "| forecaster | parameters | model bytes | buffer (samples) | µs/sample CPython "
+        "| µs/sample MicroPython |",
+        "|---|---|---|---|---|---|",
+    ]
+    for r in fp.itertuples():
+        lines.append(
+            f"| {r.forecaster} | {r.parameters} | {r.model_bytes} | {r.buffer_samples} | "
+            f"{r.us_per_sample_cpython} | {r.us_per_sample_micropython} |"
+        )
+    note = (
+        "Measured on a laptop (CPython 3.12 and the MicroPython Unix port) for one "
+        "pressure sensor; these are not ESP32 timings."
+    )
+    return note + "\n\n" + "\n".join(lines)
 
 
 def _single_row(df: pd.DataFrame, cols: dict[str, str]) -> str:

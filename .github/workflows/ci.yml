@@ -1,0 +1,55 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: lint, typecheck, tests, smoke (Python 3.12)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+      - name: Install Python 3.12 and dependencies
+        run: |
+          uv python install 3.12
+          uv sync --frozen
+      - run: make lint
+      - run: make typecheck
+      - run: make test
+      - run: make smoke
+
+  micropython:
+    name: edge core under MicroPython
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Run the core suite in the micropython/unix image
+        run: >
+          docker run --rm -v "$PWD":/work -w /work micropython/unix:v1.29.0
+          micropython tests/micropython/run.py
+
+  frost:
+    name: contract tests against FROST-Server
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+      - name: Install Python 3.12 and dependencies
+        run: |
+          uv python install 3.12
+          uv sync --frozen
+      - run: make frost-up
+      - run: make frost-test
+      - if: always()
+        run: docker compose logs frost | tail -n 100
+      - if: always()
+        run: make frost-down
