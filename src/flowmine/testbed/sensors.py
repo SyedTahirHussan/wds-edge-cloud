@@ -43,6 +43,7 @@ class StationSpec:
     node: str  # EPANET node where the station sits
     sensors: tuple[str, ...]
     tank_area_m2: float | None = None
+    inflow_sign: float = 1.0  # +1 if positive meter flow fills the tank
 
     def to_dict(self) -> dict[str, object]:
         d = asdict(self)
@@ -158,7 +159,8 @@ def layout(
             ),
             add_sensor("flow", link_name, "pipe", st, 1),
         ]
-        stations.append(StationSpec(st, number, "tank", tank_name, tuple(ids), area))
+        sign = -1.0 if wn.get_link(link_name).start_node_name == tank_name else 1.0
+        stations.append(StationSpec(st, number, "tank", tank_name, tuple(ids), area, sign))
         number += 1
     for node in sorted(others):
         st = f"LG-{node}"

@@ -133,8 +133,9 @@ class LabConfig:
 @dataclass(frozen=True)
 class EdgeConfig:
     residual_k: float = 4.0
+    calib_false_alarm: float = 0.005
     residual_lambda: float = 0.01
-    shift_after: int = 6
+    shift_after: int = 2
     max_recon_h: float = 24.0
     hw_grid: tuple[float, ...] = (0.02, 0.05, 0.1, 0.2)
     hw_phi_grid: tuple[float, ...] = (0.0, 0.5, 0.8, 0.95)
@@ -147,7 +148,7 @@ class EdgeConfig:
     summary_s: int = 900
     max_payload: int = 51
     retention_days: float = 14.0
-    tank_tol_m: float = 0.05
+    tank_tol_m: float = 0.1
 
 
 @dataclass(frozen=True)

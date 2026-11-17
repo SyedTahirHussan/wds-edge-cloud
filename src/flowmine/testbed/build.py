@@ -57,6 +57,8 @@ def periods_of(cfg: Config) -> dict[str, tuple[int, int]]:
 
 @dataclass
 class Testbed:
+    __test__ = False  # not a pytest test class
+
     cfg: Config
     seed: int
     sensors: list[Sensor]

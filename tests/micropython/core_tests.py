@@ -246,7 +246,7 @@ def test_dual_prediction_error_bound_randomised():
 
 
 def test_pipeline_flags_spike_and_reconstructs():
-    p = SensorPipeline(meta(), trained_hw(), 5)
+    p = SensorPipeline(meta(shift_after=3), trained_hw(), 5)
     k0 = S2 * NTRAIN
     out = []
     for i in range(10):
@@ -276,28 +276,49 @@ def test_pipeline_gap_reconstruction_and_out_of_range():
 
 
 def test_pipeline_level_shift_is_accepted_after_k_rejections():
-    p = SensorPipeline(meta(max_rate=1.0), trained_hw())
+    p = SensorPipeline(meta(max_rate=1.0, shift_after=3), trained_hw())
     k0 = S2 * NTRAIN
-    codes = []
+    recs = []
+    released_at = []
     for i in range(10):
         k = k0 + i
-        codes.append(p.process(k * P, seasonal(k) - (3.0 if i >= 3 else 0.0))[0])
-    flags = [quality.flags(r[3]) for r in codes]
-    assert flags[3:6] == [quality.MODEL_RESIDUAL | quality.RECONSTRUCTED] * 3
-    assert flags[6] == quality.SHIFT
-    assert all(f == 0 for f in flags[7:])
-    assert abs(codes[9][2] - (seasonal(k0 + 9) - 3.0)) < 1e-9
+        out = p.process(k * P, seasonal(k) - (3.0 if i >= 3 else 0.0))
+        released_at.append(len(out))
+        recs.extend(out)
+    assert released_at[3:6] == [0, 0, 3]
+    flags = [quality.flags(r[3]) for r in recs]
+    assert flags[3:6] == [quality.SHIFT] * 3
+    assert all(abs(r[2] - r[1]) < 1e-12 for r in recs[3:6])
+    assert all(f == 0 for f in flags[6:]) and len(recs) == 10
+    assert abs(recs[9][2] - (seasonal(k0 + 9) - 3.0)) < 1e-9
+
+
+def test_pipeline_transient_is_released_as_reconstructed():
+    p = SensorPipeline(meta(shift_after=3, max_rate=1.0), trained_hw())
+    k0 = S2 * NTRAIN
+    recs = []
+    for i in range(6):
+        k = k0 + i
+        recs.extend(p.process(k * P, seasonal(k) + (5.0 if i in (2, 3) else 0.0)))
+    flags = [quality.flags(r[3]) for r in recs]
+    assert flags[2:4] == [quality.MODEL_RESIDUAL | quality.RECONSTRUCTED] * 2
+    assert abs(recs[3][2] - seasonal(k0 + 3)) < 0.3 and len(recs) == 6
+    p.process((k0 + 6) * P, seasonal(k0 + 6) + 5.0)
+    held = p.flush()
+    assert len(held) == 1 and held[0][3] & quality.RECONSTRUCTED
 
 
 def test_pipeline_flatline_on_stuck_sensor():
     p = SensorPipeline(meta(shift_after=100), trained_hw())
     k0 = S2 * NTRAIN
-    flags = []
+    recs = []
     for i in range(8):
         x = seasonal(k0) if i >= 2 else seasonal(k0 + i)
-        flags.append(quality.flags(p.process((k0 + i) * P, x)[0][3]))
+        recs.extend(p.process((k0 + i) * P, x))
+    recs.extend(p.flush())
+    flags = [quality.flags(r[3]) for r in sorted(recs)]
+    assert len(flags) == 8 and flags[0] == 0
     assert flags[5] & quality.FLATLINE and flags[7] & quality.FLATLINE
-    assert flags[0] == 0
 
 
 def test_station_crosscheck_flags_level_and_flow():
@@ -312,7 +333,8 @@ def test_station_crosscheck_flags_level_and_flow():
     lvl = [r for r in out if r[0] == 0]
     assert lvl[1][4] & quality.CROSSCHECK
     flows = [r for r in out if r[0] == 1]
-    assert len(flows) == 4 and all(r[4] & quality.CROSSCHECK for r in flows)
+    assert len(flows) == 4 and flows[0][4] == 0
+    assert all(r[4] & quality.CROSSCHECK for r in flows[1:])
     assert st.flush() == []
     out = st.process(1, 1200, 2.0)
     assert out == [] and len(st.flush()) == 1

@@ -78,8 +78,9 @@ class HoltWinters:
         return self.predict(h)
 
     def relevel(self, x):
-        """Move the level so the forecast for the next slot equals ``x``."""
-        k = self.k + 1
+        """Move the level so that the current slot's fitted value equals ``x``; later
+        forecasts then follow the seasonal indices from the new level."""
+        k = self.k
         self.level = x - self.d[k % self.s1] - self.w[k % self.s2]
         self.e = 0.0
 

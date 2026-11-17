@@ -6,10 +6,15 @@ any test, or a slot with no sample, is replaced by the forecast and marked
 RECONSTRUCTED; the raw value is kept next to it. Rejected values never enter the
 forecaster state: the forecaster is advanced with ``None`` instead.
 
-A run of ``shift_after`` consecutive rejections by the residual test alone is taken
-as a level shift: the station cannot tell a bias fault from a real hydraulic change
-(a leak), so it stops reconstructing, re-levels the forecaster, marks SHIFT and
-leaves the decision to the cloud.
+Samples rejected by the residual test alone are held back (at most ``shift_after``
+of them, a fixed buffer). If the next sample passes, the held samples were a
+transient and are released as reconstructed. If ``shift_after`` residual-only
+rejections with residuals of the same sign occur in a row, the signal has moved to a
+new level: a pump switching, a leak, or a bias fault, which the station cannot tell
+apart (residuals of mixed sign, as in a noise burst, are rejected). The held samples are then
+released with their raw values and the SHIFT flag, the forecaster is re-levelled,
+and the decision is left to the cloud. The price is a delay of up to
+``shift_after`` samples before a residual rejection is released.
 
 Each output record is ``(t, raw, value, quality, score)``; ``score`` is the residual
 in units of the current threshold (0 when no forecast was available).
@@ -34,7 +39,7 @@ class SensorPipeline:
         self.max_recon = meta["max_recon"]
         self.last_good = None
         self.last_good_t = None
-        self.rejects = 0
+        self.pending = []
         self.unvalidated = 0
         self.dropped = 0
 
@@ -49,13 +54,29 @@ class SensorPipeline:
             self.dropped += 1
             return []
         out = []
+        if gap or x is None:
+            out.extend(self.flush())
         for i in range(gap):
             out.append(self._reconstruct(t - (gap - i) * self.period, None, quality.MISSING, 0.0))
         if x is None:
             out.append(self._reconstruct(t, None, quality.MISSING, 0.0))
         else:
-            out.append(self._sample(t, x))
+            out.extend(self._sample(t, x))
         return out
+
+    def flush(self):
+        """Release held samples as reconstructed (end of data, or a gap interrupts them)."""
+        out = []
+        for t, x, pred, score, _r in self.pending:
+            out.append(self._held(t, x, pred, score))
+        self.pending = []
+        return out
+
+    def _held(self, t, x, pred, score):
+        flags = quality.MODEL_RESIDUAL
+        if pred is None or self.unvalidated > self.max_recon:
+            return (t, x, None, quality.make(flags, self.mv), score)
+        return (t, x, pred, quality.make(flags | quality.RECONSTRUCTED, self.mv), score)
 
     def _forecast(self, t):
         if self.model is None or self.model.k is None:
@@ -89,23 +110,44 @@ class SensorPipeline:
             score = self.res.score(r)
             if score > 1.0:
                 f |= quality.MODEL_RESIDUAL
-        if f == 0:
-            return self._accept(t, x, r, score, 0)
         if f == quality.MODEL_RESIDUAL:
-            self.rejects += 1
-            if self.rejects >= self.shift_after:
-                self.model.relevel(x)
-                return self._accept(t, x, 0.0, score, quality.SHIFT)
+            self.unvalidated += 1
+            self.pending.append((t, x, pred, score, r))
+            if self.model is not None:
+                self.model.update(None, t)
+            if len(self.pending) < self.shift_after:
+                return []
+            pos = 0
+            for p in self.pending:
+                if p[4] > 0:
+                    pos += 1
+            if pos == 0 or pos == len(self.pending):
+                return self._shift()
+            return self.flush()
+        out = self.flush()
+        if f == 0:
+            out.append(self._accept(t, x, r, score, 0))
         else:
-            self.rejects = 0
-        return self._reconstruct(t, x, f, score)
+            out.append(self._reconstruct(t, x, f, score))
+        return out
+
+    def _shift(self):
+        out = []
+        last = self.pending[-1]
+        self.model.relevel(last[1])
+        for t, x, _pred, score, _r in self.pending:
+            out.append((t, x, x, quality.make(quality.SHIFT, self.mv), score))
+        self.pending = []
+        self.unvalidated = 0
+        self.last_good = last[1]
+        self.last_good_t = last[0]
+        return out
 
     def _accept(self, t, x, r, score, flags):
         if self.model is not None:
             self.model.update(x, t)
         if flags == 0:
             self.res.learn(r)
-        self.rejects = 0
         self.unvalidated = 0
         self.last_good = x
         self.last_good_t = t

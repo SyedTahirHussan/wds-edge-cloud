@@ -11,11 +11,11 @@ network:
   hydraulic_step_s: 300
 
 sensors:
-  pressure: {period_s: 300, noise_sd: 0.05, noise_rel: 0.0, resolution: 0.01, lo: 0.0, hi: 150.0,
-             max_rate_per_s: 0.02, flat_window: 12, rest_band: 0.0, epsilon: 0.5, min_scale: 0.03}
+  pressure: {period_s: 300, noise_sd: 0.05, noise_rel: 0.0, resolution: 0.01, lo: -10.0, hi: 150.0,
+             max_rate_per_s: 0.05, flat_window: 12, rest_band: 0.0, epsilon: 0.5, min_scale: 0.03}
   flow:     {period_s: 300, noise_sd: 0.2, noise_rel: 0.005, resolution: 0.1, lo: -1500.0, hi: 1500.0,
              max_rate_per_s: 2.0, flat_window: 12, rest_band: 1.0, epsilon: 2.0, min_scale: 0.3}
   level:    {period_s: 900, noise_sd: 0.005, noise_rel: 0.0, resolution: 0.01, lo: 0.0, hi: 20.0,
              max_rate_per_s: 0.002, flat_window: 8, rest_band: 0.0, epsilon: 0.05, min_scale: 0.01}
-  chlorine: {period_s: 900, noise_sd: 0.02, noise_rel: 0.0, resolution: 0.01, lo: 0.0, hi: 4.0,
+  chlorine: {period_s: 900, noise_sd: 0.02, noise_rel: 0.0, resolution: 0.01, lo: -0.1, hi: 4.0,
              max_rate_per_s: 0.0005, flat_window: 8, rest_band: 0.0, epsilon: 0.05, min_scale: 0.01}
