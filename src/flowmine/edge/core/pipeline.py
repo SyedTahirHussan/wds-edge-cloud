@@ -18,10 +18,23 @@ and the decision is left to the cloud. The price is a delay of up to
 
 Each output record is ``(t, raw, value, quality, score)``; ``score`` is the residual
 in units of the current threshold (0 when no forecast was available).
+
+Optional parameters (v0.2; a package without them behaves as v0.1):
+
+* ``conf_q``: split conformal thresholds from the calibration week, one per
+  time-of-day bucket, replacing the multiplier ``k`` (conformal.py);
+* ``cusum``: ``[k, h]`` of a two-sided CUSUM on the standardised residuals of
+  accepted samples (cusum.py). While it is in alarm, accepted samples carry
+  MODEL_RESIDUAL (not reconstructed: the forecaster has followed the drift). A level
+  shift resets it.
+
+``trace``, when set to a list, receives ``(t, z, flags)`` for every sample with a
+forecast (z = residual in units of the running sd); the cloud uses it to calibrate.
 """
 
-from . import checks, comm, quality
-from .residual import ResidualTest
+from . import checks, comm, conformal, quality
+from .cusum import Cusum
+from .residual import SQRT_PI_2, ResidualTest
 
 
 class SensorPipeline:
@@ -42,6 +55,11 @@ class SensorPipeline:
         self.pending = []
         self.unvalidated = 0
         self.dropped = 0
+        self.conf = meta.get("conf_q")
+        cs = meta.get("cusum")
+        self.cusum = Cusum(cs[0], cs[1]) if cs else None
+        self.drift = False
+        self.trace = None
 
     def set_model(self, model, model_version):
         self.model = model
@@ -108,11 +126,17 @@ class SensorPipeline:
         pred = self._forecast(t)
         score = 0.0
         r = 0.0
+        z = 0.0
         if pred is not None:
             r = x - pred
+            if self.conf is not None:
+                self.res.k = conformal.threshold(self.conf, t)
             score = self.res.score(r)
             if score > 1.0:
                 f |= quality.MODEL_RESIDUAL
+            z = r / (SQRT_PI_2 * self.res.sd_scale())
+            if self.trace is not None:
+                self.trace.append((t, z, f))
         if f == quality.MODEL_RESIDUAL:
             self.unvalidated += 1
             self.pending.append((t, x, pred, score, r))
@@ -129,7 +153,9 @@ class SensorPipeline:
             return self.flush()
         out = self.flush()
         if f == 0:
-            out.append(self._accept(t, x, r, score, 0))
+            if self.cusum is not None and pred is not None:
+                self.drift = self.cusum.update(z)
+            out.append(self._accept(t, x, r, score, quality.MODEL_RESIDUAL if self.drift else 0))
         else:
             out.append(self._reconstruct(t, x, f, score))
         return out
@@ -142,6 +168,9 @@ class SensorPipeline:
             out.append((t, x, x, quality.make(quality.SHIFT, self.mv), score))
         self.pending = []
         self.unvalidated = 0
+        if self.cusum is not None:
+            self.cusum.reset()
+            self.drift = False
         self.last_good = last[1]
         self.last_good_t = last[0]
         return out

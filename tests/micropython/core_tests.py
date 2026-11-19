@@ -8,8 +8,9 @@ import math
 import random
 import struct
 
-from flowmine.edge.core import checks, codec, comm, quality
+from flowmine.edge.core import checks, codec, comm, conformal, quality
 from flowmine.edge.core.crosscheck import TankBalance
+from flowmine.edge.core.cusum import Cusum
 from flowmine.edge.core.dualpred import DeltaReceiver, DeltaSender
 from flowmine.edge.core.holtwinters import HoltWinters
 from flowmine.edge.core.mlp import MLPForecaster, forward, n_params, parse
@@ -18,6 +19,7 @@ from flowmine.edge.core.residual import ResidualTest
 from flowmine.edge.core.ringbuf import RingBuffer
 from flowmine.edge.core.snaive import SeasonalNaive
 from flowmine.edge.core.station import Station
+from flowmine.edge.core.xmodel import CrossModel, Recent, features
 
 P = 300
 S1 = 12
@@ -348,3 +350,199 @@ def test_station_crosscheck_flags_level_and_flow():
     assert st.flush() == []
     out = st.process(1, 1200, 2.0)
     assert out == [] and len(st.flush()) == 1
+
+
+# ---- v0.2 additions -------------------------------------------------------------
+
+
+def test_conformal_rank_and_quantile():
+    assert conformal.rank(99, 0.1) == 90
+    assert conformal.rank(9, 0.1) == 9
+    scores = [float(i) for i in range(1, 100)]
+    assert conformal.split_quantile(scores, 0.1) == 90.0
+    # Too few samples for the level: the threshold is infinite.
+    assert conformal.split_quantile([1.0, 2.0], 0.1) == conformal.INF
+    assert conformal.split_quantile([], 0.1) == conformal.INF
+
+
+def _gauss(rand):
+    return sum(rand() for _ in range(12)) - 6.0
+
+
+def _rand(seed):
+    if hasattr(random, "Random"):
+        return random.Random(seed).random
+    random.seed(seed)
+    return random.random
+
+
+def test_conformal_coverage_on_exchangeable_scores():
+    rand = _rand(3)
+    cal = [abs(_gauss(rand)) for _ in range(199)]
+    q = conformal.split_quantile(cal, 0.1)
+    miss = 0
+    for _ in range(2000):
+        if abs(_gauss(rand)) > q:
+            miss += 1
+    # The realised miss rate of one calibration set is random (Beta); bounds are loose.
+    assert 0.05 < miss / 2000 < 0.16
+
+
+def test_conformal_buckets_and_halfwidth():
+    table = [1.0, 2.0, 3.0, 4.0]
+    assert conformal.bucket(0, 4) == 0 and conformal.bucket(86399, 4) == 3
+    assert conformal.threshold(table, 86400 + 7 * 3600) == 2.0
+    assert conformal.threshold([5.0], 12345) == 5.0
+    iv = [(900, 1.5), (3600, 3.0)]
+    assert conformal.halfwidth(iv, 300, 2.0) == 3.0
+    assert conformal.halfwidth(iv, 3600, 2.0) == 6.0
+    assert conformal.halfwidth(iv, 7200, 2.0) == conformal.INF
+
+
+def test_cusum_detects_small_mean_shift_and_resets():
+    c = Cusum(0.5, 5.0)
+    assert not any(c.update(z) for z in [0.3, -0.4, 0.2, -0.1] * 20)
+    c.reset()
+    hits = [c.update(1.0) for _ in range(20)]
+    assert not hits[0] and hits[-1] and hits.index(True) == 10
+    c.reset()
+    assert c.stat() == 0.0 and not c.alarm()
+    # A single clipped outlier cannot raise the alarm.
+    assert not Cusum(0.5, 5.0).update(1000.0)
+    c2 = Cusum(0.5, 5.0)
+    assert any(c2.update(-1.0) for _ in range(12))
+
+
+def test_pipeline_cusum_flags_slow_drift():
+    m = meta(max_rate=1.0, shift_after=50, cusum=[0.5, 4.0])
+    p = SensorPipeline(m, trained_hw())
+    k0 = S2 * NTRAIN
+    rand = _rand(5)
+    recs = []
+    for i in range(400):
+        k = k0 + i
+        drift = 0.004 * (i - 100) if i > 100 else 0.0
+        recs.extend(p.process(k * P, seasonal(k) + drift + 0.02 * _gauss(rand)))
+    flagged = [i for i, r in enumerate(recs) if r[3] & quality.MODEL_RESIDUAL]
+    assert flagged and min(flagged) > 100
+    assert all(not recs[i][3] & quality.RECONSTRUCTED for i in flagged)
+    clean = SensorPipeline(meta(max_rate=1.0, shift_after=50), trained_hw())
+    for i in range(50):
+        clean.process((k0 + i) * P, seasonal(k0 + i))
+    assert clean.cusum is None
+
+
+def test_pipeline_conformal_table_replaces_k():
+    p = SensorPipeline(meta(conf_q=[1.0e30], max_rate=1.0), trained_hw())
+    k0 = S2 * NTRAIN
+    out = []
+    for i in range(6):
+        k = k0 + i
+        out.extend(p.process(k * P, seasonal(k) + (8.0 if i == 3 else 0.0)))
+    assert all(quality.flags(r[3]) == 0 for r in out)
+    trace = []
+    p2 = SensorPipeline(meta(conf_q=[2.0, 2.0]), trained_hw())
+    p2.trace = trace
+    p2.process(k0 * P, seasonal(k0) + 8.0)
+    assert len(trace) == 1 and trace[0][1] > 2.0 and trace[0][2] & quality.MODEL_RESIDUAL
+
+
+def _ridge_spec(inputs, w, s, q):
+    return {
+        "inputs": inputs,
+        "mu": [0.0] * 7,
+        "sd": [1.0] * 7,
+        "ymu": 0.0,
+        "ysd": 1.0,
+        "kind": "ridge",
+        "w": w,
+        "b": 0.0,
+        "s": s,
+        "q": q,
+        "max_age": 900,
+    }
+
+
+def test_xmodel_features_ridge_and_int8_mlp():
+    f = features([2.0], [1.5], 21600)
+    assert len(f) == 7 and f[0] == 2.0 and f[1] == 0.5 and f[2] == 4.0
+    assert abs(f[3] - 1.0) < 1e-9 and abs(f[4]) < 1e-9
+    m = CrossModel(_ridge_spec([1], [2.0, 0, 0, 0, 0, 0, 0], 0.1, 3.0))
+    assert abs(m.predict([3.0], [3.0], 0) - 6.0) < 1e-6
+    assert abs(m.score(6.5, [3.0], [3.0], 0) - 5.0) < 1e-5
+    layers = [
+        [7, 2, 1, [1, 0, 0, 0, 0, 0, 0, -1, 0, 0, 0, 0, 0, 0], [0.0, 0.0], 0.5],
+        [2, 1, 0, [127, 127], [0.25], 0.01],
+    ]
+    spec = _ridge_spec([1], [0.0] * 7, 1.0, 3.0)
+    spec["kind"] = "mlp"
+    spec["layers"] = layers
+    spec["q8"] = 1
+    mm = CrossModel(spec)
+    # hidden = relu(0.5 * [x, -x]); out = 0.01 * 127 * (h0 + h1) + 0.25
+    assert abs(mm.predict([2.0], [2.0], 0) - (1.27 * 1.0 + 0.25)) < 1e-5
+    assert abs(mm.predict([-2.0], [-2.0], 0) - (1.27 * 1.0 + 0.25)) < 1e-5
+
+
+def test_recent_latest_sample_and_staleness():
+    r = Recent(3)
+    assert r.at(100, 900) is None
+    r.push(0, 1.0)
+    r.push(300, 2.0)
+    r.push(600, 3.0)
+    r.push(900, 4.0)
+    assert len(r.items) == 3 and r.at(700, 900) == (3.0, 2.0)
+    assert r.at(900, 900) == (3.0, 2.0) and r.at(901, 900) == (4.0, 3.0)
+    assert r.at(3000, 900) is None
+
+
+def _flat_hw(level):
+    hw = HoltWinters(P, S1, S2, 0.1, 0.1, 0.1, 0.5)
+    for k in range(S2 * 40):
+        hw.update(level + (0.01 if k % 2 else -0.01), k * P)
+    return hw
+
+
+def _pair_station():
+    # Sensor 0 reads 50, sensor 1 reads 25; each is predicted from the other (0 = 2 * 1).
+    m = meta(max_rate=10.0, shift_after=2, min_scale=0.05, flat_window=200)
+    st = Station(
+        2,
+        {0: SensorPipeline(m, _flat_hw(50.0)), 1: SensorPipeline(m, _flat_hw(25.0))},
+        None,
+        xmodels={
+            0: _ridge_spec([1], [2.0, 0, 0, 0, 0, 0, 0], 0.05, 4.0),
+            1: _ridge_spec([0], [0.5, 0, 0, 0, 0, 0, 0], 0.05, 4.0),
+        },
+    )
+    st.tie_s = 1800
+    return st
+
+
+def _run_pair(st, a_step, b_step, n=40, onset=10):
+    k0 = S2 * 40
+    out = []
+    for i in range(n):
+        k = k0 + i
+        on = i >= onset
+        w = 0.01 if k % 2 else -0.01
+        out += st.process(0, k * P, 50.0 + w + (a_step if on else 0.0))
+        out += st.process(1, k * P, 25.0 + w / 2 + (b_step if on else 0.0))
+    out += st.flush()
+    a = sorted(r for r in out if r[0] == 0)
+    b = sorted(r for r in out if r[0] == 1)
+    return a, b
+
+
+def test_station_cross_model_blames_the_sensor_that_shifted():
+    a, b = _run_pair(_pair_station(), 3.0, 0.0)
+    flagged = [i for i, r in enumerate(a) if r[4] & quality.CROSSCHECK]
+    # Evidence (the level shift) at sample 10; flags start tie_s (6 samples) later.
+    assert flagged == list(range(16, 40))
+    assert not any(r[4] & quality.CROSSCHECK for r in b)
+
+
+def test_station_cross_model_tie_flags_nothing():
+    # Both sensors move together (a real change): no cross-model flag.
+    a, b = _run_pair(_pair_station(), 3.0, 1.5)
+    assert not any(r[4] & quality.CROSSCHECK for r in a + b)

@@ -111,6 +111,9 @@ Configuration `default`, seeds 1, 2, 3, 4, 5; mean ± sample standard deviation 
 - drift: recall 0.01 at the edge (Holt-Winters) against 0.28 in the cloud; the cloud detects it better.
 - spike: recall 0.82 at the edge (Holt-Winters) against 0.53 in the cloud; the edge detects it better.
 - False-alarm rate on clean samples: hybrid 0.0406, edge Holt-Winters 0.0055, central 0.0354.
+- v0.2 station against v0.1: F1 0.248 against 0.153, false-alarm rate 0.0151 against 0.0055, bias recall 0.099 against 0.005, drift recall 0.113 against 0.014.
+- Conformal residual thresholds (one table per sensor): on clean test-week samples the residual test rejects 0.0065 at nominal 0.01, 0.0037 at nominal 0.005, 0.0007 at nominal 0.001.
+- Reconstruction intervals at nominal coverage 0.90 cover 0.85 (Holt-Winters), 0.89 (spatial) and 0.85 (selector by interval width) of test-week gap samples.
 - Reconstruction: the calibration week puts the temporal/spatial crossover at 276 ± 277 min. For 1440-min pressure gaps the MAE is 0.499 m (Holt-Winters), 0.281 m (spatial) and 4.930 m (linear interpolation, which needs the future).
 - Uplink: delta sends 0.36 of the bytes of the validated policy; SensorThings JSON is 34 times the binary frame size for the same records.
 - Cold-start station, one-step RMSE: local 2.220 m, centralised 1.705 m, federated 2.136 m, federated with fine-tuning 2.102 m.
@@ -124,6 +127,7 @@ Configuration `default`, seeds 1, 2, 3, 4, 5; mean ± sample standard deviation 
 | Rule tests only | 0.745 ± 0.082 | 0.078 ± 0.008 | 0.142 ± 0.014 | 0.300 ± 0.079 | 0.146 ± 0.047 | 94.308 ± 119.008 | 0.002 ± 0.001 | 0.002 ± 0.001 |
 | Edge, Holt-Winters | 0.523 ± 0.041 | 0.090 ± 0.009 | 0.153 ± 0.014 | 0.760 ± 0.065 | 0.107 ± 0.020 | 189.218 ± 84.023 | 0.005 ± 0.001 | 0.008 ± 0.002 |
 | Edge, neural | 0.513 ± 0.058 | 0.090 ± 0.010 | 0.153 ± 0.017 | 0.740 ± 0.102 | 0.108 ± 0.024 | 109.134 ± 58.190 | 0.006 ± 0.001 | 0.007 ± 0.002 |
+| Edge v0.2 | 0.428 ± 0.061 | 0.181 ± 0.087 | 0.248 ± 0.100 | 0.790 ± 0.089 | 0.099 ± 0.016 | 172.988 ± 69.529 | 0.015 ± 0.005 | 0.025 ± 0.006 |
 | Central (spatial + lab) | 0.499 ± 0.231 | 0.367 ± 0.138 | 0.393 ± 0.140 | 0.440 ± 0.195 | 0.129 ± 0.034 | 126.414 ± 219.748 | 0.035 ± 0.039 | 0.067 ± 0.025 |
 | Hybrid fusion | 0.470 ± 0.209 | 0.428 ± 0.078 | 0.427 ± 0.103 | 0.650 ± 0.137 | 0.094 ± 0.029 | 197.483 ± 138.301 | 0.041 ± 0.029 | 0.082 ± 0.051 |
 

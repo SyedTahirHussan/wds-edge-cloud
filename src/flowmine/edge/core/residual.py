@@ -17,9 +17,11 @@ class ResidualTest:
         self.min_scale = min_scale
         self.clip = clip
 
+    def sd_scale(self):
+        return self.scale if self.scale > self.min_scale else self.min_scale
+
     def threshold(self):
-        s = self.scale if self.scale > self.min_scale else self.min_scale
-        return self.k * SQRT_PI_2 * s
+        return self.k * SQRT_PI_2 * self.sd_scale()
 
     def score(self, r):
         """Residual in units of the current threshold (>1 means rejected)."""

@@ -1,4 +1,4 @@
-"""Run E1-E7 (plus the maintenance-log and temperature checks) over all seeds.
+"""Run E1-E13 (plus the maintenance-log and temperature checks) over all seeds.
 
 Each seed runs in its own process. The BLAS thread variables are set before the
 workers start (the Makefile also exports them), so every worker runs single-threaded
@@ -32,6 +32,12 @@ EXPERIMENTS = (
     "e7_events",
     "x1_maintenance",
     "x2_temperature",
+    "e8a_conformal",
+    "e8b_intervals",
+    "e8b_tables",
+    "e8c_ablation",
+    "e8_xmodels",
+    "e8_cusum",
 )
 
 
@@ -73,7 +79,15 @@ def temperature_check(ctx: SeedContext) -> pd.DataFrame:
 
 
 def run_seed(cfg: Config, seed: int) -> dict[str, pd.DataFrame]:
-    from flowmine.experiments import comms, context, detection, reconstruction, training, twin_value
+    from flowmine.experiments import (
+        comms,
+        context,
+        detection,
+        edge_v2,
+        reconstruction,
+        training,
+        twin_value,
+    )
     from flowmine.testbed import network
 
     logging.basicConfig(level=logging.WARNING)
@@ -89,6 +103,7 @@ def run_seed(cfg: Config, seed: int) -> dict[str, pd.DataFrame]:
     wn = network.load_network(cfg.network.inp)
     out["x1_maintenance"] = detection.maintenance_ablation(ctx, wn, network.graph(wn))
     out["x2_temperature"] = temperature_check(ctx)
+    out.update(edge_v2.e8(ctx))
     return out
 
 

@@ -136,7 +136,10 @@ class EdgeNode:
                 "tol_m": cfg.edge.tank_tol_m,
                 "sign": spec.inflow_sign,
             }
-        self.core = Station(spec.number, pipes, tank)
+        xm = {
+            self.local[sid]: b.meta["xmodel"] for sid, b in bundles.items() if b.meta.get("xmodel")
+        }
+        self.core = Station(spec.number, pipes, tank, xmodels=xm or None)
         scales = {s.local_id: s.resolution for s in sensors}
         dual = {self.local[sid]: b.hw_copy() for sid, b in bundles.items()}
         eps = {s.local_id: cfg.sensors[s.kind].epsilon for s in sensors}

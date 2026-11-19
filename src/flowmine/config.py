@@ -149,6 +149,11 @@ class EdgeConfig:
     max_payload: int = 51
     retention_days: float = 14.0
     tank_tol_m: float = 0.1
+    # v0.2 station (fixed before any test-week run; see docs/methods.md)
+    conformal_alpha: float = 0.005
+    cross_alpha: float = 0.002
+    cusum_target: float = 0.002
+    cross_cusum_target: float = 0.002
 
 
 @dataclass(frozen=True)

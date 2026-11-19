@@ -7,7 +7,7 @@ from pathlib import Path
 import pandas as pd
 
 from flowmine.config import Config
-from flowmine.experiments import report, run
+from flowmine.experiments import detection, report, run
 
 
 def test_smoke_experiments_and_report(smoke_cfg: Config, tmp_path: Path, monkeypatch) -> None:
@@ -17,7 +17,7 @@ def test_smoke_experiments_and_report(smoke_cfg: Config, tmp_path: Path, monkeyp
         df = pd.read_csv(tmp_path / "raw" / f"{name}.csv")
         assert len(df) > 0 and (df.seed == 1).all()
     e1 = pd.read_csv(tmp_path / "raw" / "e1_detection.csv")
-    assert set(e1.method) == {"rules", "edge_hw", "edge_mlp", "central", "hybrid"}
+    assert set(e1.method) == set(detection.METHODS)
     rec = e1.set_index(["method", "fault_type"]).recall
     # The forecast residual catches spikes the rule tests miss, and the spatial model
     # catches the bias a single station cannot see.

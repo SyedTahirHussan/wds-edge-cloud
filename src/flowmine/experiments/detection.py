@@ -31,7 +31,7 @@ from flowmine.experiments.context import (
 from flowmine.hybrid.fusion import Fusion, features
 from flowmine.testbed.faults import FAULT_TYPES, GAPS
 
-METHODS = ("rules", "edge_hw", "edge_mlp", "central", "hybrid")
+METHODS = ("rules", "edge_hw", "edge_mlp", "edge_v2", "central", "hybrid")
 
 
 def spatial_long(
@@ -80,7 +80,7 @@ def _join(base: pd.DataFrame, extra: pd.DataFrame, cols: list[str]) -> pd.DataFr
 def method_flags(ctx: SeedContext, period: str, fusion: Fusion | None) -> pd.DataFrame:
     lab = labels(ctx, period)
     out = lab.copy()
-    for name in ("rules", "edge_hw", "edge_mlp"):
+    for name in ("rules", "edge_hw", "edge_mlp", "edge_v2"):
         f = _join(lab, edge_flags(ctx.edge[name]), ["reject", "shift"])
         out[name] = f.reject.astype(bool).to_numpy() | lab.missing.to_numpy()
         out[f"{name}_shift"] = f["shift"].astype(bool).to_numpy()
@@ -131,12 +131,14 @@ def _episodes(
     return eps
 
 
-def score(ctx: SeedContext, flags: pd.DataFrame) -> pd.DataFrame:
+def score(
+    ctx: SeedContext, flags: pd.DataFrame, methods: tuple[str, ...] = METHODS
+) -> pd.DataFrame:
     """Rows: method x fault type (plus 'overall') with sample and event metrics."""
     rows = []
     period_of = {s.sensor_id: s.period_s for s in ctx.tb.sensors}
     faults = ctx.tb.faults[ctx.tb.faults.period == "test"]
-    for m in METHODS:
+    for m in methods:
         clean = (flags.fault_type == "") & (flags.event_id < 0)
         in_event = (flags.fault_type == "") & (flags.event_id >= 0)
         fp = int((flags[m] & clean).sum())

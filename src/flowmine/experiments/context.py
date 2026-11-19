@@ -19,7 +19,7 @@ import pandas as pd
 
 from flowmine.central import chlorine, homogenise, spatial
 from flowmine.config import Config
-from flowmine.edge import calibrate, replay
+from flowmine.edge import calibrate, replay, v2
 from flowmine.edge.core import quality
 from flowmine.edge.models import SensorModels, fit_sensor
 from flowmine.edge.node import MemoryLink
@@ -50,6 +50,7 @@ class SeedContext:
     spatial_raw: spatial.SpatialModel
     spatial_val: spatial.SpatialModel
     lab_base: dict[str, tuple[float, float]]
+    v2: v2.V2Fit | None = None
 
     @property
     def seed(self) -> int:
@@ -120,11 +121,13 @@ def build_context(cfg: Config, seed: int) -> SeedContext:
         "hw": calibrate.calibrate(tb, bundles, cfg, "hw"),
         "mlp": calibrate.calibrate(tb, bundles, cfg, "mlp"),
     }
+    fit_v2 = v2.calibrate(tb, bundles, cfg)
     t0, t1 = tb.periods["calib"][0], tb.periods["test"][1]
     edge = {
         "edge_hw": run_edge(tb, calibrated["hw"], "hw", "validated", t0, t1),
         "edge_mlp": run_edge(tb, calibrated["mlp"], "mlp", "validated", t0, t1),
         "rules": run_edge(tb, rules_only(bundles), "hw", "validated", t0, t1),
+        "edge_v2": run_edge(tb, fit_v2.bundles, "hw", "validated", t0, t1),
     }
     hyd = [s.sensor_id for s in tb.sensors if s.kind != "chlorine"]
     cl = [s.sensor_id for s in tb.sensors if s.kind == "chlorine"]
@@ -141,7 +144,7 @@ def build_context(cfg: Config, seed: int) -> SeedContext:
         train.values
     )
     sp_val = copy.deepcopy(sp_raw)
-    ctx = SeedContext(cfg, tb, bundles, calibrated, edge, hyd, cl, sp_raw, sp_val, {})
+    ctx = SeedContext(cfg, tb, bundles, calibrated, edge, hyd, cl, sp_raw, sp_val, {}, fit_v2)
     g_raw = ctx.grid(ctx.raw("calib"), "calib")
     sp_raw.calibrate(g_raw.values, g_raw.suspect, clean_mask(tb, g_raw), c.alarm_quantile)
     g_val = ctx.grid(edge["edge_hw"].frame, "calib")

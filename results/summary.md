@@ -9,6 +9,9 @@ Configuration `default`, seeds 1, 2, 3, 4, 5; mean ± sample standard deviation 
 - drift: recall 0.01 at the edge (Holt-Winters) against 0.28 in the cloud; the cloud detects it better.
 - spike: recall 0.82 at the edge (Holt-Winters) against 0.53 in the cloud; the edge detects it better.
 - False-alarm rate on clean samples: hybrid 0.0406, edge Holt-Winters 0.0055, central 0.0354.
+- v0.2 station against v0.1: F1 0.248 against 0.153, false-alarm rate 0.0151 against 0.0055, bias recall 0.099 against 0.005, drift recall 0.113 against 0.014.
+- Conformal residual thresholds (one table per sensor): on clean test-week samples the residual test rejects 0.0065 at nominal 0.01, 0.0037 at nominal 0.005, 0.0007 at nominal 0.001.
+- Reconstruction intervals at nominal coverage 0.90 cover 0.85 (Holt-Winters), 0.89 (spatial) and 0.85 (selector by interval width) of test-week gap samples.
 - Reconstruction: the calibration week puts the temporal/spatial crossover at 276 ± 277 min. For 1440-min pressure gaps the MAE is 0.499 m (Holt-Winters), 0.281 m (spatial) and 4.930 m (linear interpolation, which needs the future).
 - Uplink: delta sends 0.36 of the bytes of the validated policy; SensorThings JSON is 34 times the binary frame size for the same records.
 - Cold-start station, one-step RMSE: local 2.220 m, centralised 1.705 m, federated 2.136 m, federated with fine-tuning 2.102 m.
@@ -22,6 +25,7 @@ Configuration `default`, seeds 1, 2, 3, 4, 5; mean ± sample standard deviation 
 | Rule tests only | 0.745 ± 0.082 | 0.078 ± 0.008 | 0.142 ± 0.014 | 0.300 ± 0.079 | 0.146 ± 0.047 | 94.308 ± 119.008 | 0.002 ± 0.001 | 0.002 ± 0.001 |
 | Edge, Holt-Winters | 0.523 ± 0.041 | 0.090 ± 0.009 | 0.153 ± 0.014 | 0.760 ± 0.065 | 0.107 ± 0.020 | 189.218 ± 84.023 | 0.005 ± 0.001 | 0.008 ± 0.002 |
 | Edge, neural | 0.513 ± 0.058 | 0.090 ± 0.010 | 0.153 ± 0.017 | 0.740 ± 0.102 | 0.108 ± 0.024 | 109.134 ± 58.190 | 0.006 ± 0.001 | 0.007 ± 0.002 |
+| Edge v0.2 | 0.428 ± 0.061 | 0.181 ± 0.087 | 0.248 ± 0.100 | 0.790 ± 0.089 | 0.099 ± 0.016 | 172.988 ± 69.529 | 0.015 ± 0.005 | 0.025 ± 0.006 |
 | Central (spatial + lab) | 0.499 ± 0.231 | 0.367 ± 0.138 | 0.393 ± 0.140 | 0.440 ± 0.195 | 0.129 ± 0.034 | 126.414 ± 219.748 | 0.035 ± 0.039 | 0.067 ± 0.025 |
 | Hybrid fusion | 0.470 ± 0.209 | 0.428 ± 0.078 | 0.427 ± 0.103 | 0.650 ± 0.137 | 0.094 ± 0.029 | 197.483 ± 138.301 | 0.041 ± 0.029 | 0.082 ± 0.051 |
 
@@ -50,6 +54,13 @@ Configuration `default`, seeds 1, 2, 3, 4, 5; mean ± sample standard deviation 
 | Edge, neural | drift | 0.01 ± 0.02 | 0.02 ± 0.03 | 947.50 ± 547.06 |
 | Edge, neural | bias | 0.00 ± 0.00 | 0.01 ± 0.01 | 595.00 ± 220.34 |
 | Edge, neural | noise_burst | 0.25 ± 0.12 | 0.14 ± 0.05 | 7.50 ± 11.18 |
+| Edge v0.2 | gap_short | 1.00 ± 0.00 | 0.13 ± 0.04 | 0.00 ± 0.00 |
+| Edge v0.2 | gap_long | 1.00 ± 0.00 | 0.65 ± 0.09 | 0.00 ± 0.00 |
+| Edge v0.2 | stuck | 0.82 ± 0.01 | 0.37 ± 0.08 | 55.67 ± 11.76 |
+| Edge v0.2 | spike | 0.88 ± 0.15 | 0.04 ± 0.01 | 0.00 ± 0.00 |
+| Edge v0.2 | drift | 0.11 ± 0.10 | 0.14 ± 0.11 | 925.17 ± 513.52 |
+| Edge v0.2 | bias | 0.10 ± 0.14 | 0.10 ± 0.14 | 343.12 ± 331.99 |
+| Edge v0.2 | noise_burst | 0.25 ± 0.14 | 0.07 ± 0.03 | 8.50 ± 11.94 |
 | Central (spatial + lab) | gap_short | 1.00 ± 0.00 | 0.09 ± 0.05 | 0.00 ± 0.00 |
 | Central (spatial + lab) | gap_long | 1.00 ± 0.00 | 0.53 ± 0.28 | 0.00 ± 0.00 |
 | Central (spatial + lab) | stuck | 0.15 ± 0.21 | 0.06 ± 0.11 | 134.17 ± 18.43 |
@@ -165,6 +176,96 @@ Configuration `default`, seeds 1, 2, 3, 4, 5; mean ± sample standard deviation 
 | demand MAE without temperature (L/s) | with temperature (L/s) | mean demand (L/s) |
 |---|---|---|
 | 25.4 ± 9.8 | 25.3 ± 8.3 | 693.1 ± 27.2 |
+
+## E8a conformal residual thresholds: nominal level against empirical rate
+
+| buckets | alpha | period | residual-test rejections on clean samples | station false-alarm rate (all tests) | sensors x buckets with no finite threshold |
+|---|---|---|---|---|---|
+| 1 | 0.01 | calib | 0.0073 ± 0.0008 | 0.0086 ± 0.0013 | 0.0000 ± 0.0000 |
+| 1 | 0.01 | test | 0.0065 ± 0.0012 | 0.0075 ± 0.0012 | 0.0000 ± 0.0000 |
+| 1 | 0.005 | calib | 0.0040 ± 0.0002 | 0.0055 ± 0.0010 | 0.0000 ± 0.0000 |
+| 1 | 0.005 | test | 0.0037 ± 0.0011 | 0.0051 ± 0.0011 | 0.0000 ± 0.0000 |
+| 1 | 0.001 | calib | 0.0004 ± 0.0001 | 0.0028 ± 0.0014 | 8.0000 ± 0.0000 |
+| 1 | 0.001 | test | 0.0007 ± 0.0003 | 0.0025 ± 0.0006 | 8.0000 ± 0.0000 |
+| 4 | 0.01 | calib | 0.0038 ± 0.0005 | 0.0054 ± 0.0010 | 1.4000 ± 1.3416 |
+| 4 | 0.01 | test | 0.0040 ± 0.0008 | 0.0053 ± 0.0010 | 1.4000 ± 1.3416 |
+| 4 | 0.005 | calib | 0.0012 ± 0.0001 | 0.0036 ± 0.0015 | 32.0000 ± 0.0000 |
+| 4 | 0.005 | test | 0.0017 ± 0.0004 | 0.0034 ± 0.0007 | 32.0000 ± 0.0000 |
+| 4 | 0.001 | calib | 0.0000 ± 0.0000 | 0.0024 ± 0.0015 | 100.0000 ± 0.0000 |
+| 4 | 0.001 | test | 0.0000 ± 0.0000 | 0.0018 ± 0.0006 | 100.0000 ± 0.0000 |
+
+## E8b reconstruction intervals (nominal coverage 0.90), pressure
+
+| gap_min | method | MAE (m) | coverage | mean width (m) |
+|---|---|---|---|---|
+| 15 | holt_winters | 0.708 ± 1.009 | 0.850 ± 0.224 | 1.230 ± 0.682 |
+| 15 | hybrid_crossover | 0.722 ± 0.999 | 0.850 ± 0.224 | 1.626 ± 1.063 |
+| 15 | hybrid_width | 0.708 ± 1.009 | 0.850 ± 0.224 | 1.230 ± 0.682 |
+| 15 | spatial | 0.580 ± 0.833 | 0.983 ± 0.037 | 6.826 ± 5.837 |
+| 60 | holt_winters | 0.193 ± 0.143 | 0.971 ± 0.035 | 2.010 ± 0.670 |
+| 60 | hybrid_crossover | 0.144 ± 0.167 | 0.996 ± 0.009 | 2.839 ± 0.389 |
+| 60 | hybrid_width | 0.193 ± 0.143 | 0.971 ± 0.035 | 2.010 ± 0.670 |
+| 60 | spatial | 0.222 ± 0.236 | 0.996 ± 0.009 | 4.322 ± 1.766 |
+| 180 | holt_winters | 0.611 ± 0.483 | 0.954 ± 0.068 | 4.150 ± 1.909 |
+| 180 | hybrid_crossover | 0.226 ± 0.261 | 0.969 ± 0.068 | 5.214 ± 3.124 |
+| 180 | hybrid_width | 0.622 ± 0.468 | 0.954 ± 0.068 | 3.926 ± 1.886 |
+| 180 | spatial | 0.218 ± 0.243 | 0.950 ± 0.112 | 5.532 ± 2.866 |
+| 360 | holt_winters | 0.852 ± 0.574 | 0.847 ± 0.193 | 4.874 ± 1.799 |
+| 360 | hybrid_crossover | 0.434 ± 0.352 | 0.908 ± 0.120 | 4.681 ± 1.548 |
+| 360 | hybrid_width | 0.651 ± 0.293 | 0.850 ± 0.114 | 3.844 ± 1.318 |
+| 360 | spatial | 0.434 ± 0.352 | 0.908 ± 0.120 | 4.681 ± 1.548 |
+| 720 | holt_winters | 1.058 ± 0.840 | 0.890 ± 0.138 | 6.368 ± 2.332 |
+| 720 | hybrid_crossover | 0.351 ± 0.343 | 0.957 ± 0.071 | 5.056 ± 1.481 |
+| 720 | hybrid_width | 0.638 ± 0.438 | 0.920 ± 0.060 | 4.439 ± 1.335 |
+| 720 | spatial | 0.351 ± 0.343 | 0.957 ± 0.071 | 5.056 ± 1.481 |
+| 1440 | holt_winters | 0.773 ± 0.442 | 0.970 ± 0.031 | 6.358 ± 2.880 |
+| 1440 | hybrid_crossover | 0.342 ± 0.364 | 0.951 ± 0.079 | 4.699 ± 3.496 |
+| 1440 | hybrid_width | 0.438 ± 0.333 | 0.948 ± 0.070 | 4.302 ± 3.012 |
+| 1440 | spatial | 0.342 ± 0.364 | 0.951 ± 0.079 | 4.699 ± 3.496 |
+
+### E8b coverage over all sensor kinds
+
+| method | coverage, all kinds |
+|---|---|
+| holt_winters | 0.850 ± 0.053 |
+| hybrid_crossover | 0.872 ± 0.039 |
+| hybrid_width | 0.847 ± 0.028 |
+| spatial | 0.886 ± 0.065 |
+
+## E8c station ablation (test week)
+
+| variant | F1 | false-alarm rate | spike recall | stuck recall | bias recall | drift recall |
+|---|---|---|---|---|---|---|
+| v0.1 station | 0.153 ± 0.014 | 0.005 ± 0.001 | 0.825 ± 0.143 | 0.805 ± 0.027 | 0.005 ± 0.004 | 0.014 ± 0.021 |
+| conformal thresholds only | 0.153 ± 0.010 | 0.005 ± 0.001 | 0.875 ± 0.153 | 0.805 ± 0.027 | 0.004 ± 0.003 | 0.015 ± 0.020 |
+| conformal + CUSUM | 0.143 ± 0.008 | 0.012 ± 0.005 | 0.875 ± 0.153 | 0.817 ± 0.009 | 0.004 ± 0.003 | 0.015 ± 0.021 |
+| conformal + cross-sensor model | 0.272 ± 0.117 | 0.008 ± 0.004 | 0.875 ± 0.153 | 0.812 ± 0.030 | 0.099 ± 0.137 | 0.119 ± 0.102 |
+| v0.2 station (all three) | 0.248 ± 0.100 | 0.015 ± 0.005 | 0.875 ± 0.153 | 0.823 ± 0.009 | 0.099 ± 0.137 | 0.113 ± 0.100 |
+
+### E8 cross-sensor models per station
+
+| sensor_id | share of seeds MLP chosen | MLP RMSE reduction vs ridge (week 7) | share of seeds with a finite threshold |
+|---|---|---|---|
+| F-10 | 1.00 ± 0.00 | 0.20 ± 0.02 | 1.00 ± 0.00 |
+| P-10 | 1.00 ± 0.00 | 0.11 ± 0.02 | 1.00 ± 0.00 |
+| F-60 | 1.00 ± 0.00 | 0.09 ± 0.02 | 1.00 ± 0.00 |
+| P-61 | 1.00 ± 0.00 | 0.06 ± 0.01 | 1.00 ± 0.00 |
+| L-1 | 1.00 ± 0.00 | 0.11 ± 0.03 | 1.00 ± 0.00 |
+| F-40 | 1.00 ± 0.00 | 0.14 ± 0.04 | 1.00 ± 0.00 |
+| L-2 | 1.00 ± 0.00 | 0.11 ± 0.03 | 0.80 ± 0.45 |
+| F-50 | 1.00 ± 0.00 | 0.12 ± 0.03 | 1.00 ± 0.00 |
+| L-3 | 1.00 ± 0.00 | 0.10 ± 0.04 | 0.80 ± 0.45 |
+| F-20 | 1.00 ± 0.00 | 0.20 ± 0.03 | 1.00 ± 0.00 |
+| P-131 | 1.00 ± 0.00 | 0.19 ± 0.08 | 1.00 ± 0.00 |
+| C-131 | 0.80 ± 0.45 | 0.02 ± 0.02 | 0.40 ± 0.55 |
+| P-15 | 1.00 ± 0.00 | 0.17 ± 0.07 | 1.00 ± 0.00 |
+| C-15 | 1.00 ± 0.00 | 0.17 ± 0.02 | 0.60 ± 0.55 |
+| P-197 | 1.00 ± 0.00 | 0.17 ± 0.11 | 1.00 ± 0.00 |
+| C-197 | 1.00 ± 0.00 | 0.08 ± 0.02 | 0.60 ± 0.55 |
+| P-219 | 1.00 ± 0.00 | 0.10 ± 0.04 | 1.00 ± 0.00 |
+| C-219 | 1.00 ± 0.00 | 0.07 ± 0.01 | 1.00 ± 0.00 |
+| P-253 | 1.00 ± 0.00 | 0.19 ± 0.05 | 1.00 ± 0.00 |
+| C-253 | 1.00 ± 0.00 | 0.21 ± 0.04 | 0.80 ± 0.45 |
 
 ## Edge footprint
 

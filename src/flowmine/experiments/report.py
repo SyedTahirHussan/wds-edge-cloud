@@ -26,6 +26,7 @@ METHOD_NAMES = {
     "rules": "Rule tests only",
     "edge_hw": "Edge, Holt-Winters",
     "edge_mlp": "Edge, neural",
+    "edge_v2": "Edge v0.2",
     "central": "Central (spatial + lab)",
     "hybrid": "Hybrid fusion",
 }
@@ -173,6 +174,7 @@ def findings(d: dict[str, pd.DataFrame]) -> list[str]:
         f"edge Holt-Winters {fa.get('edge_hw', np.nan):.4f}, "
         f"central {fa.get('central', np.nan):.4f}."
     )
+    out.extend(v2_findings(d))
     e2 = d["e2_reconstruction"]
     cross = e2.groupby("seed").crossover_min.first()
     # Mean over seeds of the per-seed mean, as in the E2 table.
@@ -224,6 +226,38 @@ def findings(d: dict[str, pd.DataFrame]) -> list[str]:
         + ", ".join(f"{a} {v:.2f}" for a, v in e7.faults_raised_as_events.items())
         + "."
     )
+    return out
+
+
+def v2_findings(d: dict[str, pd.DataFrame]) -> list[str]:
+    out = []
+    e1 = d["e1_detection"]
+    rec = e1.groupby(["method", "fault_type"]).recall.mean()
+    ov = e1[e1.fault_type == "overall"].groupby("method")[["f1", "false_alarm_rate"]].mean()
+    if "edge_v2" in ov.index:
+        out.append(
+            f"v0.2 station against v0.1: F1 {ov.f1['edge_v2']:.3f} against "
+            f"{ov.f1['edge_hw']:.3f}, false-alarm rate {ov.false_alarm_rate['edge_v2']:.4f} "
+            f"against {ov.false_alarm_rate['edge_hw']:.4f}, bias recall "
+            f"{rec['edge_v2', 'bias']:.3f} against {rec['edge_hw', 'bias']:.3f}, drift recall "
+            f"{rec['edge_v2', 'drift']:.3f} against {rec['edge_hw', 'drift']:.3f}."
+        )
+    if "e8a_conformal" in d:
+        a = d["e8a_conformal"]
+        a = a[(a.buckets == 1) & (a.period == "test")].groupby("alpha").empirical_rate.mean()
+        out.append(
+            "Conformal residual thresholds (one table per sensor): on clean test-week samples "
+            "the residual test rejects "
+            + ", ".join(f"{a[x]:.4f} at nominal {x:g}" for x in sorted(a.index, reverse=True))
+            + "."
+        )
+    if "e8b_intervals" in d:
+        b = d["e8b_intervals"].groupby(["seed", "method"]).coverage.mean().groupby("method").mean()
+        out.append(
+            "Reconstruction intervals at nominal coverage 0.90 cover "
+            f"{b['holt_winters']:.2f} (Holt-Winters), {b['spatial']:.2f} (spatial) and "
+            f"{b['hybrid_width']:.2f} (selector by interval width) of test-week gap samples."
+        )
     return out
 
 
@@ -388,6 +422,7 @@ def build(cfg: Config, results: Path) -> tuple[str, str]:
         },
     )
     t_fp = footprint_table(results / "edge_footprint.csv")
+    t8 = e8_tables(d)
     head = (
         f"Configuration `{cfg.name}`, seeds {', '.join(map(str, seeds))}; mean ± sample standard "
         "deviation over seeds; test week only unless stated."
@@ -422,6 +457,16 @@ def build(cfg: Config, results: Path) -> tuple[str, str]:
                 t_x1,
                 "## External data (day-ahead total demand)",
                 t_x2,
+                "## E8a conformal residual thresholds: nominal level against empirical rate",
+                t8["e8a"],
+                "## E8b reconstruction intervals (nominal coverage 0.90), pressure",
+                t8["e8b"],
+                "### E8b coverage over all sensor kinds",
+                t8["e8b_pooled"],
+                "## E8c station ablation (test week)",
+                t8["e8c"],
+                "### E8 cross-sensor models per station",
+                t8["e8x"],
                 *(["## Edge footprint", t_fp] if t_fp else []),
             ]
         )
@@ -451,6 +496,79 @@ def build(cfg: Config, results: Path) -> tuple[str, str]:
         ]
     )
     return summary, readme
+
+
+def e8_tables(d: dict[str, pd.DataFrame]) -> dict[str, str]:
+    """E8a-c tables (the v0.2 station)."""
+    out: dict[str, str] = {}
+    a = d["e8a_conformal"]
+    out["e8a"] = table(
+        a,
+        ["buckets", "alpha", "period"],
+        {
+            "empirical_rate": "residual-test rejections on clean samples",
+            "edge_false_alarm_rate": "station false-alarm rate (all tests)",
+            "infinite_thresholds": "sensors x buckets with no finite threshold",
+        },
+        digits=4,
+    )
+    b = d["e8b_intervals"]
+    per = b.groupby(["seed", "kind", "gap_min", "method"])[["mae", "coverage", "width"]].mean()
+    per = per.reset_index()
+    out["e8b"] = table(
+        per[per.kind == "pressure"],
+        ["gap_min", "method"],
+        {"mae": "MAE (m)", "coverage": "coverage", "width": "mean width (m)"},
+        digits=3,
+    )
+    pooled = b.groupby(["seed", "method"])[["coverage", "mae"]].mean().reset_index()
+    out["e8b_pooled"] = table(pooled, ["method"], {"coverage": "coverage, all kinds"}, digits=3)
+    c = d["e8c_ablation"]
+    wide = c.pivot_table(index=["seed", "variant"], columns="fault_type", values="recall")
+    ov = c[c.fault_type == "overall"].set_index(["seed", "variant"])
+    wide["f1"] = ov.f1
+    wide["far"] = ov.false_alarm_rate
+    wide = wide.reset_index()
+    out["e8c"] = table(
+        wide,
+        ["variant"],
+        {
+            "f1": "F1",
+            "far": "false-alarm rate",
+            "spike": "spike recall",
+            "stuck": "stuck recall",
+            "bias": "bias recall",
+            "drift": "drift recall",
+        },
+        order=["edge_hw", "v2_conformal", "v2_conformal_cusum", "v2_conformal_cross", "edge_v2"],
+        rename=lambda v: VARIANT_NAMES.get(v, v),
+    )
+    x = d["e8_xmodels"]
+    x = x.assign(
+        mlp=(x.chosen == "mlp").astype(float),
+        gain=1.0 - x.rmse_mlp_calib / x.rmse_ridge_calib,
+        finite=(x.threshold_q < 1e29).astype(float),
+    )
+    out["e8x"] = table(
+        x,
+        ["sensor_id"],
+        {
+            "mlp": "share of seeds MLP chosen",
+            "gain": "MLP RMSE reduction vs ridge (week 7)",
+            "finite": "share of seeds with a finite threshold",
+        },
+        digits=2,
+    )
+    return out
+
+
+VARIANT_NAMES = {
+    "edge_hw": "v0.1 station",
+    "v2_conformal": "conformal thresholds only",
+    "v2_conformal_cusum": "conformal + CUSUM",
+    "v2_conformal_cross": "conformal + cross-sensor model",
+    "edge_v2": "v0.2 station (all three)",
+}
 
 
 def footprint_table(path: Path) -> str:
