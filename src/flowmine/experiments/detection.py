@@ -20,6 +20,7 @@ import pandas as pd
 import wntr
 
 from flowmine.central import homogenise, maintenance, triage
+from flowmine.experiments import model_validation
 from flowmine.experiments.context import (
     GRID,
     SeedContext,
@@ -31,7 +32,7 @@ from flowmine.experiments.context import (
 from flowmine.hybrid.fusion import Fusion, features
 from flowmine.testbed.faults import FAULT_TYPES, GAPS
 
-METHODS = ("rules", "edge_hw", "edge_mlp", "edge_v2", "central", "hybrid")
+METHODS = ("rules", "edge_hw", "edge_mlp", "edge_v2", "central", "central_model", "hybrid")
 
 
 def spatial_long(
@@ -99,6 +100,12 @@ def method_flags(ctx: SeedContext, period: str, fusion: Fusion | None) -> pd.Dat
     in_val = np.array([(s, int(t)) in d_val for s, t in key])
     is_cl = lab.sensor_id.isin(ctx.chlorine_ids).to_numpy()
     out["central"] = np.where(is_cl, in_raw, raw_r > 1.0) | lab.missing.to_numpy()
+    mf = lab[["sensor_id", "time_s"]].merge(
+        model_validation.flags(ctx, period), on=["sensor_id", "time_s"], how="left"
+    )
+    out["central_model"] = (
+        mf.model_flag.fillna(False).astype(bool).to_numpy() | lab.missing.to_numpy()
+    )
     x = features(out.edge_hw.to_numpy(), out.edge_hw_shift.to_numpy(), val_r)
     fused = fusion.predict(x) if fusion is not None else np.zeros(len(out), dtype=bool)
     out["hybrid"] = np.where(is_cl, out.edge_hw.to_numpy() | in_val, fused) | lab.missing.to_numpy()
@@ -132,12 +139,20 @@ def _episodes(
 
 
 def score(
-    ctx: SeedContext, flags: pd.DataFrame, methods: tuple[str, ...] = METHODS
+    ctx: SeedContext,
+    flags: pd.DataFrame,
+    methods: tuple[str, ...] = METHODS,
+    sensor_ids: list[str] | None = None,
 ) -> pd.DataFrame:
-    """Rows: method x fault type (plus 'overall') with sample and event metrics."""
+    """Rows: method x fault type (plus 'overall') with sample and event metrics.
+
+    ``sensor_ids`` restricts the fault events to those sensors (pass the same subset
+    of ``flags``)."""
     rows = []
     period_of = {s.sensor_id: s.period_s for s in ctx.tb.sensors}
     faults = ctx.tb.faults[ctx.tb.faults.period == "test"]
+    if sensor_ids is not None:
+        faults = faults[faults.sensor_id.isin(sensor_ids)]
     for m in methods:
         clean = (flags.fault_type == "") & (flags.event_id < 0)
         in_event = (flags.fault_type == "") & (flags.event_id >= 0)
@@ -187,6 +202,16 @@ def e1(ctx: SeedContext) -> tuple[pd.DataFrame, pd.DataFrame]:
     fusion = fit_fusion(ctx)
     flags = method_flags(ctx, "test", fusion)
     return score(ctx, flags).assign(seed=ctx.seed), flags
+
+
+PRESSURE_METHODS = ("edge_hw", "edge_v2", "central", "central_model", "hybrid")
+
+
+def e1_pressure(ctx: SeedContext, flags: pd.DataFrame) -> pd.DataFrame:
+    """E1 restricted to the pressure sensors, where the model level applies."""
+    ids = model_validation.pressure_ids(ctx)
+    sub = flags[flags.sensor_id.isin(ids)].reset_index(drop=True)
+    return score(ctx, sub, PRESSURE_METHODS, ids).assign(seed=ctx.seed)
 
 
 def maintenance_ablation(
