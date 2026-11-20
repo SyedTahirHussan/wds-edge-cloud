@@ -528,3 +528,35 @@ analyser nodes and from the week-8 laboratory results.
 Simplified relative to [R4]: first-order bulk decay only, no temperature dependence
 (the testbed has none), one known source concentration, simulated laboratory noise
 (sd 0.01 mg/L), and a hydraulic model whose only error is the demand distribution.
+
+## Stacked fusion with a false-alarm budget (Phase 3, v0.4)
+
+`hybrid/stacking.py`, `experiments/stacking.py`. One L2 logistic regression
+(scikit-learn, C = 1, balanced class weights) per seed, trained on week-7 samples
+with their labels; gap faults and missing samples are left out of training and stay
+flagged. Features per sample, all available when the sample is scored:
+
+- from the v0.2 station: rejected by any test (including missing), released as a level
+  shift, forecast residual score (|r| over the current threshold), absolute
+  cross-sensor residual |xz|, and the CUSUM statistic over its decision interval h
+  (recomputed from the station's residual trace with the sensor's own k and h on
+  accepted samples; unlike the station, the recomputation does not reset after a
+  level shift);
+- from the centre: spatial ratio |z| / threshold on the edge-validated stream, the
+  twin-residual ratio (pressure sensors only) and the laboratory CUSUM drift flag
+  (chlorine analysers only);
+- sensor kind (one-hot over pressure, flow, level, chlorine);
+- maintenance context: 1 when a valve or pump operation affecting the sensor (same
+  rule as the maintenance-log suppression) was logged in the last 6 h.
+
+A missing value is set to 0 and a 0/1 indicator says it is missing (forecast score,
+cross residual, CUSUM, spatial, twin). Continuous scores are clipped to [0, 10] and
+every feature is standardised with its week-7 mean and sd. With p the model's
+probability, the threshold for a budget B is
+
+    t_B = the (n - floor(B n))-th smallest p among the n clean week-7 samples,
+
+and a sample is flagged when p > t_B. Budgets: 0.5 %, 1 % (headline) and 2 %. The
+week-7 rates are in-sample, because the model, the station's thresholds and the
+spatial thresholds are all fitted on week 7; week 8 tests the claim. Coefficients are
+written to `e11_coef.csv`.

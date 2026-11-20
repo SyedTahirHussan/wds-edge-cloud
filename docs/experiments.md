@@ -189,6 +189,33 @@ Metrics: mean absolute error against the true concentration at the five analyser
 nodes over the week, and against the week-8 laboratory results at their sampling
 times (`e10_chlorine.csv`).
 
+### E11 stacked fusion
+
+The stacked model (methods, "Stacked fusion") is fitted and its thresholds chosen on
+week 7; week 8 is scored with E1's metrics, delay included (E1's definition: the mean
+over detected fault events of the time between onset and the first flag). Hybrid v0.1 is
+scored on the same frame and is unchanged. `e11_calib.csv` gives, per budget, the
+week-7 (in-sample) and week-8 false-alarm rates. The Pareto sweep (`e11_pareto.csv`)
+thresholds each method's own score at the quantiles of its clean week-8 scores for 25
+target rates between 1e-4 and 0.3 (log spaced) and records the realised false-alarm
+rate and recall; rule rejections, cross-checks and missing samples stay flagged at
+every threshold, and chlorine samples keep the method's lab-CUSUM decision. Scores:
+the station's residual score for edge v0.1 and v0.2, the spatial ratio (central), the
+twin-residual ratio (central_model), the v0.1 fusion's probability (hybrid) and the
+stacked probability. Each method's own operating point is a separate row. E7 is
+recomputed for the stacked method (1 % budget): its flagged samples are the ones the
+centre replaces, and the process events raised are the hybrid triage's event
+participants it does not flag (`e11_triage.csv`).
+
+### E12 what each side gains from the other
+
+New in E12: the central spatial model scored with E1's metrics on the hydraulic
+sensors, once on the raw uplink and once on the edge-validated stream (each
+calibrated on week 7 on its own input; `e12_spatial.csv`). The other rows of the
+table come from existing CSVs: E6 (twin on raw against edge-validated input), E9
+(leak ranking, operating variant), E1 (v0.1 station alone against the hybrid fusion)
+and E5 (cold-start station with its own model against one trained in the cloud).
+
 ### Checks
 
 False spatial alarms with and without the maintenance log. Day-ahead
@@ -212,6 +239,13 @@ reproducible byte for byte. It is produced separately:
 and gaps (`make smoke`, under a minute).
 
 ## Not done
+
+E13, the resilience matrix (link outage, cloud analytics down, failed stations, stale
+central models and halved pressure-sensor density, across edge-only, central-only and
+hybrid), was not run in v0.4; the time went to E11 and E12. E4 remains the only
+outage experiment. The centre-to-edge calibration offset (a persistent bias found by
+the centre, sent to the station through the registry, with rollback) was not built
+either.
 
 Optional E8 (the validators on the BattLeDIM L-Town SCADA data [R14], dataset
 doi:10.5281/zenodo.4017659, CC-BY-4.0) was not run.

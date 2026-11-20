@@ -54,6 +54,17 @@ a boundary meter is wrong, but a fault that bends the pressure pattern unevenly
 still reaches the individual residuals. It is reported on its own; the fusion model
 does not use it yet.
 
+### The false-alarm budget does not hold on the test week
+
+The stacked detector's threshold keeps 1 % of clean week-7 samples flagged, and on
+week 8 it flags 3.7 % (`e11_calib.csv`; 2.8 % at the 0.5 % budget, 5.1 % at 2 %).
+Week 7 is the only labelled week before the test, and the station's thresholds, the
+spatial model's threshold, the twin band and the stacked model are all set on it, so
+every score the stacked model sees is in-sample there. A held-out calibration split
+of week 7 or a second labelled week would be needed for the budget to mean what it
+says. At the 1 % budget the stacked model's F1 is close to hybrid v0.1's (0.437
+against 0.427) with a seed spread larger than the difference.
+
 ### One small network
 
 Net3 has 92 junctions and one consumer (node 203) that takes

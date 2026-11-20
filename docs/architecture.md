@@ -58,6 +58,55 @@ flowchart LR
    hash, warm it on their stored history and switch to it; the previous version stays
    available for rollback.
 
+## Outcome 3: storage at the edge, model management in the cloud
+
+```mermaid
+flowchart LR
+  subgraph Station["Station (edge/node.py)"]
+    P["validation core<br/>edge/core"]
+    DB[("SQLite samples<br/>14 days")]
+    OB[("SQLite outbox")]
+    P --> DB
+    P --> OB
+  end
+  GW["Gateway"]
+  STA[("SensorThings")]
+  REG[("Model registry<br/>hybrid/registry.py")]
+  CA["Central analytics,<br/>stacked fusion"]
+  OB -- "up: binary frames (records, quality, model version)" --> GW --> STA
+  STA -- "up: observations" --> CA
+  CA -- "fits packages" --> REG
+  REG -- "down: package + sha256" --> P
+  CA -. "down: history request" .-> DB
+```
+
+Where data live. Every record a station produces (raw value, validated value,
+quality code, model version, residual score) goes into its SQLite table `samples`
+(`edge/store.py`), kept for `edge.retention_days` (14 days in the configuration).
+Frames waiting for the link sit in a separate `outbox` table and are sent in order
+when the link returns; `test_store_and_forward_replays_in_order` and
+`test_store_retention_history_and_outbox` check both. During E4's 24 h link outage
+the stations kept validating and flagged 2.8 of 4.8 fault events on average before
+the cloud saw any of them; no sample was lost, because the outbox has no size limit
+and retention is longer than the outage. The cloud holds what arrived, in
+SensorThings.
+
+How the cloud manages models. The registry stores each package with its hash,
+training window, metrics and a status (candidate, active, retired); promoting a
+version retires the previous one and `rollback` brings it back
+(`test_registry_versions_promote_rollback_and_deploy`). A station checks the hash,
+warms the new forecaster on its own stored history and keeps the previous version
+for its own rollback (`test_model_install_hash_check_and_rollback`). The v0.2
+package carries the conformal thresholds, CUSUM parameters and the cross-sensor
+model, whose MLP weights travel as int8 (E8d). The stacked detector of v0.4 runs in
+the cloud only; it reads the scores the stations send. Calibration offsets sent
+by the centre to a station were planned for v0.4 and not built.
+
+Which way messages go. Upwards: binary frames, decoded by the gateway into
+Observations, then MQTT to the twin and HTTP reads by the central analytics.
+Downwards: model packages from the registry, and requests for raw history from a
+station's store. Nothing else flows towards the stations.
+
 ## Why each technology
 
 - OGC SensorThings API with FROST-Server. This is the IoT data layer Aigües de

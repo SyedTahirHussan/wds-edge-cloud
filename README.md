@@ -65,6 +65,31 @@ flowchart LR
 Details and the reasons for each technology choice are in
 [docs/architecture.md](docs/architecture.md).
 
+## What changed in v0.4
+
+Version 0.4 works on Phase 3: putting the station's and the centre's evidence into one
+decision, and stating what each architecture costs.
+
+- Stacked fusion (E11). One logistic model reads every score both sides produce for a
+  sample: the v0.2 station's rejections, level shifts, residual score, cross-sensor
+  residual and CUSUM; the centre's spatial ratio, twin residual and laboratory drift
+  flag; the sensor kind; and whether a valve or pump operation near it was logged in
+  the last 6 h. Its threshold is set on week 7 for a false-alarm budget (0.5, 1 or
+  2 %) instead of for F1. Hybrid v0.1 stays as it was, so the earlier numbers stand.
+- A Pareto sweep of recall against false-alarm rate for six methods on week 8.
+- E12, a table of what each side gains from the other, with one new comparison (the
+  spatial model on raw against edge-validated input) and rows cited from E1, E5, E6
+  and E9.
+- A trade-off table across edge-only, central-only, hybrid v0.1 and stacked, generated
+  by the report writer, and an Outcome 3 section in
+  [docs/architecture.md](docs/architecture.md).
+
+The code is in `hybrid/stacking.py`, `experiments/stacking.py` and
+`experiments/synergy.py`. At the 1 % budget the stacked model's F1 is 0.437 against
+0.427 for hybrid v0.1, within the seed spread, and it flags 3.7 % of clean week-8
+samples, not 1 %: the budget does not hold. The resilience matrix (E13) and the
+centre-to-edge calibration offsets were planned and not built.
+
 ## What changed in v0.3
 
 Version 0.3 works on Phase 2: the hydraulic model becomes a diagnostic tool fed by the
@@ -128,10 +153,10 @@ false alarms and almost no detections. The station still misses most biases. Pha
 |---|---|---|
 | Phase 1: distributed validation and reconstruction at the edge | `edge/core`, `edge`, `edge/v2.py` | E1, E2, E3, E4, E8 |
 | Phase 2: analytics on heterogeneous SensorThings data (SCADA, laboratory, maintenance, external), with hydraulic and quality models | `sta`, `central`, `central/leak.py`, `twin` | E1 (incl. `central_model`), E2, E9, E10, maintenance and temperature checks |
-| Phase 3: integration and synergy of distributed and centralised results | `hybrid`, `experiments` | E1 (fusion), E2 (hybrid), E5, E6, E7 |
+| Phase 3: integration and synergy of distributed and centralised results | `hybrid`, `hybrid/stacking.py`, `experiments/stacking.py`, `experiments/synergy.py` | E1 (fusion), E2 (hybrid), E5, E6, E7, E11, E12, trade-off table |
 | Outcome 1: edge data collection and validation framework | `edge/core`, `edge` | E1-E4, E8 |
 | Outcome 2: live IoT data connected to EPANET | `sta`, `twin`, `central/leak.py` | E6, E9, E10, the demo |
-| Outcome 3: decentralised storage with centralised model management | `edge/store.py`, `hybrid/registry.py`, `hybrid/federated.py` | E4, E5 |
+| Outcome 3: decentralised storage with centralised model management | `edge/store.py`, `hybrid/registry.py`, `hybrid/federated.py`; [docs/architecture.md](docs/architecture.md#outcome-3-storage-at-the-edge-model-management-in-the-cloud) | E4, E5, E11, E12 |
 
 ## Quickstart
 
@@ -368,6 +393,14 @@ All tables, including E4, E5, E8 in full and the per-fault-type breakdown, are i
 
 ## What the results say
 
+- Phase 3 in one table: the hybrid designs reach the highest F1 (0.427 and 0.437)
+  and pay for it with the most false alarms of the four architectures (0.041 and
+  0.037 against 0.015 for the station alone), at the same uplink cost as validating
+  at the station. The central-only design flags no fault during a 24 h link outage;
+  the stations flagged 2.8 of 4.8 fault events on average. The twin's error at
+  unmonitored nodes drops from 0.92 m on raw input to 0.64 m on hybrid-validated
+  input. The table is under "Trade-off table" in the results block.
+
 - The station and the cloud see different faults. A station sees one signal. It
   catches spikes and frozen values, catches noise bursts only partly, and is cheap to
   run. It cannot tell a bias step from a pump starting or a leak, so it accepts both
@@ -423,6 +456,14 @@ All tables, including E4, E5, E8 in full and the per-fault-type breakdown, are i
   None of the three designs reconstructed an event away.
 
 Where the approach loses:
+
+- The stacked detector's false-alarm budget is a week-7 number. At 1 % it flags 3.7 %
+  of clean week-8 samples (2.8 % at 0.5 %, 5.1 % at 2 %), because every score it reads
+  is fitted on week 7 as well. Its F1 gain over hybrid v0.1 (0.437 against 0.427) is
+  smaller than the spread over seeds.
+- The station's flags do not help the centre's spatial model: on edge-validated input
+  its F1 on the hydraulic sensors is 0.465 against 0.480 on raw input, with more false
+  alarms (0.0498 against 0.0401).
 
 - Leak localisation loses more between clean and measured inputs than any
   validation stage wins back (top-5 share 0.63 against 0.34). The localisation is scored
