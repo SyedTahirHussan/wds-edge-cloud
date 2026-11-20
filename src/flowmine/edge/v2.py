@@ -312,7 +312,10 @@ def calibrate(
     conf = conformal_tables(ct, e.conformal_alpha, 1)
     stage = with_conformal(bundles, conf)
     for xf in xfits:
-        stage[xf.sensor_id].meta["xmodel"] = {**xf.spec, "q": conformal.INF}
+        spec = dict(xf.spec)
+        if e.xmodel_int8 and spec["kind"] == "mlp":
+            spec = {**spec, "layers": quantise_layers(spec["layers"]), "q8": 1}
+        stage[xf.sensor_id].meta["xmodel"] = {**spec, "q": conformal.INF}
     trace, xtrace, _ = _trace_run(tb, stage, t0, t1)
     cus, choice = cusum_params(trace, e.cusum_target)
     xcus, xchoice = cusum_params(
@@ -374,3 +377,90 @@ def with_conformal(
 
 def recon_flags(q: pd.Series) -> pd.Series:
     return (q & quality.RECONSTRUCTED) != 0
+
+
+def quantised(bundles: dict[str, SensorModels]) -> dict[str, SensorModels]:
+    """The same bundles with every cross-sensor MLP stored as int8 (per-tensor scale)."""
+    out = {}
+    for sid, b in bundles.items():
+        nb = copy.copy(b)
+        meta: dict[str, Any] = dict(b.meta)
+        xm = meta.get("xmodel")
+        if isinstance(xm, dict) and xm.get("kind") == "mlp" and not xm.get("q8"):
+            meta["xmodel"] = {**xm, "layers": quantise_layers(xm["layers"]), "q8": 1}
+        nb.meta = meta
+        out[sid] = nb
+    return out
+
+
+def layers_forward(layers: list[list[Any]], z: np.ndarray) -> np.ndarray:
+    """numpy forward pass of xmodel layers (float or int8 with a scale)."""
+    x = z
+    for layer in layers:
+        n_in, n_out, act, w, b = layer[:5]
+        scale = layer[5] if len(layer) > 5 else 1.0
+        wm = np.asarray(w, dtype=float).reshape(n_out, n_in) * scale
+        x = x @ wm.T + np.asarray(b)
+        if act == 1:
+            x = np.maximum(x, 0.0)
+    return np.asarray(x[:, 0])
+
+
+def int8_check(tb: Testbed, xfits: list[XFit], bundles: dict[str, SensorModels]) -> pd.DataFrame:
+    """RMSE change from storing MLP weights as int8, on clean samples of weeks 7 and 8.
+
+    Cross-sensor MLPs: prediction error of the target. Neural forecasters: one-step
+    error of the pressure loggers' forecaster (``edge_mlp``)."""
+    wide = tb.wide("observed")
+    per = {s.sensor_id: s.period_s for s in tb.sensors}
+    rows = []
+    for xf in xfits:
+        if xf.net is None:
+            continue
+        spec = xf.spec
+        q = quantise_layers(spec["layers"])
+        for period in ("calib", "test"):
+            times, y, x = _input_rows(wide, xf.sensor_id, xf.inputs, per, *tb.periods[period])
+            ok = np.isfinite(x).all(axis=1) & np.isfinite(y)
+            ok &= _clean(tb, [xf.sensor_id, *xf.inputs], times, per)
+            z = (x[ok] - np.asarray(spec["mu"])) / np.asarray(spec["sd"])
+            for name, layers in (("float32", spec["layers"]), ("int8", q)):
+                pred = spec["ymu"] + spec["ysd"] * layers_forward(layers, z)
+                rows.append(
+                    {
+                        "model": "cross_mlp",
+                        "sensor_id": xf.sensor_id,
+                        "period": period,
+                        "weights": name,
+                        "rmse": float(np.sqrt(np.mean((pred - y[ok]) ** 2))),
+                    }
+                )
+    for s in tb.sensors:
+        if s.kind != "pressure" or not s.station.startswith("LG-"):
+            continue
+        net = bundles[s.sensor_id].net
+        ws: list[np.ndarray] = net.weights()
+        qws: list[np.ndarray] = []
+        for w in ws:
+            sc = float(np.max(np.abs(w))) / 127.0 or 1.0
+            qws.append(np.clip(np.round(w / sc), -127, 127) * sc if w.ndim == 2 else w)
+        series = wide[s.sensor_id]
+        for period in ("calib", "test"):
+            a, b = tb.periods[period]
+            start = a - 86400
+            win = series[(series.index >= start) & (series.index < b)]
+            vals = win[win.index % s.period_s == 0].to_numpy(dtype=float)
+            z = (vals - net.mean) / net.std
+            xf_, yf = nn.features(z, net.window, net.s1, net.s2, start // s.period_s)
+            for name, wl in (("float32", ws), ("int8", qws)):
+                err = (nn.forward(wl, xf_) - yf) * net.std
+                rows.append(
+                    {
+                        "model": "forecast_mlp",
+                        "sensor_id": s.sensor_id,
+                        "period": period,
+                        "weights": name,
+                        "rmse": float(np.sqrt(np.mean(err**2))),
+                    }
+                )
+    return pd.DataFrame(rows)

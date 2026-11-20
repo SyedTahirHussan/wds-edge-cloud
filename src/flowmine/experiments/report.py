@@ -243,8 +243,8 @@ def v2_findings(d: dict[str, pd.DataFrame]) -> list[str]:
             f"{rec['edge_v2', 'drift']:.3f} against {rec['edge_hw', 'drift']:.3f}."
         )
     if "e8a_conformal" in d:
-        a = d["e8a_conformal"]
-        a = a[(a.buckets == 1) & (a.period == "test")].groupby("alpha").empirical_rate.mean()
+        ea = d["e8a_conformal"]
+        a = ea[(ea.buckets == 1) & (ea.period == "test")].groupby("alpha").empirical_rate.mean()
         out.append(
             "Conformal residual thresholds (one table per sensor): on clean test-week samples "
             "the residual test rejects "
@@ -423,6 +423,7 @@ def build(cfg: Config, results: Path) -> tuple[str, str]:
     )
     t_fp = footprint_table(results / "edge_footprint.csv")
     t8 = e8_tables(d)
+    t_fps = station_footprint_table(results / "edge_footprint_stations.csv")
     head = (
         f"Configuration `{cfg.name}`, seeds {', '.join(map(str, seeds))}; mean ± sample standard "
         "deviation over seeds; test week only unless stated."
@@ -467,6 +468,9 @@ def build(cfg: Config, results: Path) -> tuple[str, str]:
                 t8["e8c"],
                 "### E8 cross-sensor models per station",
                 t8["e8x"],
+                "### E8d int8 weights (mean RMSE over sensors, clean samples; physical units)",
+                int8_table(d),
+                *(["## Station footprint (P1.5)", t_fps] if t_fps else []),
                 *(["## Edge footprint", t_fp] if t_fp else []),
             ]
         )
@@ -591,6 +595,49 @@ def footprint_table(path: Path) -> str:
         "pressure sensor; these are not ESP32 timings."
     )
     return note + "\n\n" + "\n".join(lines)
+
+
+ESP32_SRAM_KB = 520  # ESP32 Series Datasheet v5.3, p. 4 (Espressif)
+
+
+def station_footprint_table(path: Path) -> str:
+    """Per-station heap and time under the MicroPython Unix port (edge_footprint_stations.csv)."""
+    if not path.exists():
+        return ""
+    fp = pd.read_csv(path)
+    lines = [
+        "| station | version | package (B) | live heap (B) | share of 520 KB SRAM "
+        "| most allocated in one sample (B) | µs/sample MicroPython |",
+        "|---|---|---|---|---|---|---|",
+    ]
+    for r in fp.to_dict("records"):
+        heap = float(r["heap_resident_bytes"])
+        share = heap / (ESP32_SRAM_KB * 1024)
+        lines.append(
+            f"| {r['station']} ({r['station_class']}) | {r['version']} | {r['package_bytes']} | "
+            f"{int(heap)} | {share:.1%} | {int(float(r['max_alloc_one_sample_bytes']))} | "
+            f"{r['us_per_sample_micropython']} |"
+        )
+    note = (
+        "Measured with the MicroPython Unix port on a laptop (gc.mem_alloc after a "
+        "collection), one day of calibration-week samples per station. The SRAM figure is "
+        "the ESP32's internal SRAM from Espressif's ESP32 Series Datasheet v5.3; this is a "
+        "comparison of numbers, not a measurement on an ESP32, where MicroPython's heap is "
+        "only part of that SRAM."
+    )
+    return note + "\n\n" + "\n".join(lines)
+
+
+def int8_table(d: dict[str, pd.DataFrame]) -> str:
+    q = d["e8d_int8"]
+    per = q.groupby(["seed", "model", "period", "weights"]).rmse.mean().unstack("weights")
+    per = per.assign(change=per["int8"] / per["float32"] - 1.0).reset_index()
+    return table(
+        per,
+        ["model", "period"],
+        {"float32": "RMSE float32", "int8": "RMSE int8", "change": "relative change"},
+        digits=4,
+    )
 
 
 def _single_row(df: pd.DataFrame, cols: dict[str, str]) -> str:

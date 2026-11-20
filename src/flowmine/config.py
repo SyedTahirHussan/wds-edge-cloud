@@ -154,6 +154,7 @@ class EdgeConfig:
     cross_alpha: float = 0.002
     cusum_target: float = 0.002
     cross_cusum_target: float = 0.002
+    xmodel_int8: bool = True  # kept: week-7 RMSE change within the seed spread (E8d)
 
 
 @dataclass(frozen=True)

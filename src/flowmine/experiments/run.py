@@ -38,6 +38,7 @@ EXPERIMENTS = (
     "e8c_ablation",
     "e8_xmodels",
     "e8_cusum",
+    "e8d_int8",
 )
 
 

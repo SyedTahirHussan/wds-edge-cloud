@@ -68,8 +68,13 @@ def _exp_report(args: argparse.Namespace) -> int:
 def _exp_footprint(args: argparse.Namespace) -> int:
     from flowmine.experiments import footprint
 
-    df = footprint.measure(load_config(args.config), Path(args.out), args.seed)
+    cfg = load_config(args.config)
+    df = footprint.measure(cfg, Path(args.out), args.seed)
     print(df.to_string(index=False))
+    st = footprint.measure_stations(
+        cfg, Path(args.out).with_name("edge_footprint_stations.csv"), args.seed
+    )
+    print(st.to_string(index=False))
     return 0
 
 

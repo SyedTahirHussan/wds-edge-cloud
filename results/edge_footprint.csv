@@ -1,4 +1,4 @@
 forecaster,parameters,model_bytes,buffer_samples,us_per_sample_cpython,us_per_sample_micropython,sensor,machine
-seasonal_naive,0,8064,2028,2.7,13.2,P-10,laptop (not an ESP32)
-holt_winters,4,9264,2316,2.9,18.2,P-10,laptop (not an ESP32)
-mlp,609,2466,300,27.9,118.4,P-10,laptop (not an ESP32)
+seasonal_naive,0,8064,2028,2.9,14.5,P-10,laptop (not an ESP32)
+holt_winters,4,9264,2316,3.1,19.8,P-10,laptop (not an ESP32)
+mlp,609,2466,300,29.0,121.8,P-10,laptop (not an ESP32)

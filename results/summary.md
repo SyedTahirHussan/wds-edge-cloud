@@ -9,7 +9,7 @@ Configuration `default`, seeds 1, 2, 3, 4, 5; mean ± sample standard deviation 
 - drift: recall 0.01 at the edge (Holt-Winters) against 0.28 in the cloud; the cloud detects it better.
 - spike: recall 0.82 at the edge (Holt-Winters) against 0.53 in the cloud; the edge detects it better.
 - False-alarm rate on clean samples: hybrid 0.0406, edge Holt-Winters 0.0055, central 0.0354.
-- v0.2 station against v0.1: F1 0.248 against 0.153, false-alarm rate 0.0151 against 0.0055, bias recall 0.099 against 0.005, drift recall 0.113 against 0.014.
+- v0.2 station against v0.1: F1 0.248 against 0.153, false-alarm rate 0.0151 against 0.0055, bias recall 0.098 against 0.005, drift recall 0.113 against 0.014.
 - Conformal residual thresholds (one table per sensor): on clean test-week samples the residual test rejects 0.0065 at nominal 0.01, 0.0037 at nominal 0.005, 0.0007 at nominal 0.001.
 - Reconstruction intervals at nominal coverage 0.90 cover 0.85 (Holt-Winters), 0.89 (spatial) and 0.85 (selector by interval width) of test-week gap samples.
 - Reconstruction: the calibration week puts the temporal/spatial crossover at 276 ± 277 min. For 1440-min pressure gaps the MAE is 0.499 m (Holt-Winters), 0.281 m (spatial) and 4.930 m (linear interpolation, which needs the future).
@@ -25,7 +25,7 @@ Configuration `default`, seeds 1, 2, 3, 4, 5; mean ± sample standard deviation 
 | Rule tests only | 0.745 ± 0.082 | 0.078 ± 0.008 | 0.142 ± 0.014 | 0.300 ± 0.079 | 0.146 ± 0.047 | 94.308 ± 119.008 | 0.002 ± 0.001 | 0.002 ± 0.001 |
 | Edge, Holt-Winters | 0.523 ± 0.041 | 0.090 ± 0.009 | 0.153 ± 0.014 | 0.760 ± 0.065 | 0.107 ± 0.020 | 189.218 ± 84.023 | 0.005 ± 0.001 | 0.008 ± 0.002 |
 | Edge, neural | 0.513 ± 0.058 | 0.090 ± 0.010 | 0.153 ± 0.017 | 0.740 ± 0.102 | 0.108 ± 0.024 | 109.134 ± 58.190 | 0.006 ± 0.001 | 0.007 ± 0.002 |
-| Edge v0.2 | 0.428 ± 0.061 | 0.181 ± 0.087 | 0.248 ± 0.100 | 0.790 ± 0.089 | 0.099 ± 0.016 | 172.988 ± 69.529 | 0.015 ± 0.005 | 0.025 ± 0.006 |
+| Edge v0.2 | 0.428 ± 0.060 | 0.181 ± 0.087 | 0.248 ± 0.099 | 0.790 ± 0.089 | 0.099 ± 0.016 | 172.988 ± 69.529 | 0.015 ± 0.005 | 0.025 ± 0.006 |
 | Central (spatial + lab) | 0.499 ± 0.231 | 0.367 ± 0.138 | 0.393 ± 0.140 | 0.440 ± 0.195 | 0.129 ± 0.034 | 126.414 ± 219.748 | 0.035 ± 0.039 | 0.067 ± 0.025 |
 | Hybrid fusion | 0.470 ± 0.209 | 0.428 ± 0.078 | 0.427 ± 0.103 | 0.650 ± 0.137 | 0.094 ± 0.029 | 197.483 ± 138.301 | 0.041 ± 0.029 | 0.082 ± 0.051 |
 
@@ -59,7 +59,7 @@ Configuration `default`, seeds 1, 2, 3, 4, 5; mean ± sample standard deviation 
 | Edge v0.2 | stuck | 0.82 ± 0.01 | 0.37 ± 0.08 | 55.67 ± 11.76 |
 | Edge v0.2 | spike | 0.88 ± 0.15 | 0.04 ± 0.01 | 0.00 ± 0.00 |
 | Edge v0.2 | drift | 0.11 ± 0.10 | 0.14 ± 0.11 | 925.17 ± 513.52 |
-| Edge v0.2 | bias | 0.10 ± 0.14 | 0.10 ± 0.14 | 343.12 ± 331.99 |
+| Edge v0.2 | bias | 0.10 ± 0.13 | 0.10 ± 0.13 | 343.12 ± 331.99 |
 | Edge v0.2 | noise_burst | 0.25 ± 0.14 | 0.07 ± 0.03 | 8.50 ± 11.94 |
 | Central (spatial + lab) | gap_short | 1.00 ± 0.00 | 0.09 ± 0.05 | 0.00 ± 0.00 |
 | Central (spatial + lab) | gap_long | 1.00 ± 0.00 | 0.53 ± 0.28 | 0.00 ± 0.00 |
@@ -239,8 +239,8 @@ Configuration `default`, seeds 1, 2, 3, 4, 5; mean ± sample standard deviation 
 | v0.1 station | 0.153 ± 0.014 | 0.005 ± 0.001 | 0.825 ± 0.143 | 0.805 ± 0.027 | 0.005 ± 0.004 | 0.014 ± 0.021 |
 | conformal thresholds only | 0.153 ± 0.010 | 0.005 ± 0.001 | 0.875 ± 0.153 | 0.805 ± 0.027 | 0.004 ± 0.003 | 0.015 ± 0.020 |
 | conformal + CUSUM | 0.143 ± 0.008 | 0.012 ± 0.005 | 0.875 ± 0.153 | 0.817 ± 0.009 | 0.004 ± 0.003 | 0.015 ± 0.021 |
-| conformal + cross-sensor model | 0.272 ± 0.117 | 0.008 ± 0.004 | 0.875 ± 0.153 | 0.812 ± 0.030 | 0.099 ± 0.137 | 0.119 ± 0.102 |
-| v0.2 station (all three) | 0.248 ± 0.100 | 0.015 ± 0.005 | 0.875 ± 0.153 | 0.823 ± 0.009 | 0.099 ± 0.137 | 0.113 ± 0.100 |
+| conformal + cross-sensor model | 0.272 ± 0.116 | 0.008 ± 0.004 | 0.875 ± 0.153 | 0.812 ± 0.030 | 0.098 ± 0.135 | 0.119 ± 0.102 |
+| v0.2 station (all three) | 0.248 ± 0.099 | 0.015 ± 0.005 | 0.875 ± 0.153 | 0.823 ± 0.009 | 0.098 ± 0.135 | 0.113 ± 0.100 |
 
 ### E8 cross-sensor models per station
 
@@ -267,12 +267,40 @@ Configuration `default`, seeds 1, 2, 3, 4, 5; mean ± sample standard deviation 
 | P-253 | 1.00 ± 0.00 | 0.19 ± 0.05 | 1.00 ± 0.00 |
 | C-253 | 1.00 ± 0.00 | 0.21 ± 0.04 | 0.80 ± 0.45 |
 
+### E8d int8 weights (mean RMSE over sensors, clean samples; physical units)
+
+| model | period | RMSE float32 | RMSE int8 | relative change |
+|---|---|---|---|---|
+| cross_mlp | calib | 8.2147 ± 0.7351 | 8.2150 ± 0.7352 | 0.0001 ± 0.0012 |
+| cross_mlp | test | 7.6845 ± 2.1928 | 7.6847 ± 2.1812 | 0.0003 ± 0.0033 |
+| forecast_mlp | calib | 0.5799 ± 0.0474 | 0.5804 ± 0.0470 | 0.0008 ± 0.0015 |
+| forecast_mlp | test | 0.6388 ± 0.0631 | 0.6393 ± 0.0633 | 0.0006 ± 0.0012 |
+
+## Station footprint (P1.5)
+
+Measured with the MicroPython Unix port on a laptop (gc.mem_alloc after a collection), one day of calibration-week samples per station. The SRAM figure is the ESP32's internal SRAM from Espressif's ESP32 Series Datasheet v5.3; this is a comparison of numbers, not a measurement on an ESP32, where MicroPython's heap is only part of that SRAM.
+
+| station | version | package (B) | live heap (B) | share of 520 KB SRAM | most allocated in one sample (B) | µs/sample MicroPython |
+|---|---|---|---|---|---|---|
+| PS-10 (pump) | v0.1 | 91964 | 22080 | 4.1% | 2560 | 33.0 |
+| PS-10 (pump) | v0.2 float32 | 95987 | 25568 | 4.8% | 20288 | 60.6 |
+| PS-10 (pump) | v0.2 int8 | 94007 | 25248 | 4.7% | 16192 | 54.3 |
+| TK-1 (tank) | v0.1 | 59770 | 16352 | 3.1% | 3264 | 28.4 |
+| TK-1 (tank) | v0.2 float32 | 63805 | 19776 | 3.7% | 76256 | 56.5 |
+| TK-1 (tank) | v0.2 int8 | 61804 | 19456 | 3.7% | 59872 | 56.0 |
+| LG-131 (logger) | v0.1 | 63026 | 15904 | 3.0% | 2464 | 24.8 |
+| LG-131 (logger) | v0.2 float32 | 65715 | 18720 | 3.5% | 20256 | 55.2 |
+| LG-131 (logger) | v0.2 int8 | 64721 | 18560 | 3.5% | 16160 | 49.6 |
+| LG-101 (logger) | v0.1 | 45639 | 11360 | 2.1% | 2464 | 21.1 |
+| LG-101 (logger) | v0.2 float32 | 45688 | 11552 | 2.2% | 2624 | 22.4 |
+| LG-101 (logger) | v0.2 int8 | 45688 | 11552 | 2.2% | 2624 | 41.7 |
+
 ## Edge footprint
 
 Measured on a laptop (CPython 3.12 and the MicroPython Unix port) for one pressure sensor; these are not ESP32 timings.
 
 | forecaster | parameters | model bytes | buffer (samples) | µs/sample CPython | µs/sample MicroPython |
 |---|---|---|---|---|---|
-| seasonal_naive | 0 | 8064 | 2028 | 2.7 | 13.2 |
-| holt_winters | 4 | 9264 | 2316 | 2.9 | 18.2 |
-| mlp | 609 | 2466 | 300 | 27.9 | 118.4 |
+| seasonal_naive | 0 | 8064 | 2028 | 2.9 | 14.5 |
+| holt_winters | 4 | 9264 | 2316 | 3.1 | 19.8 |
+| mlp | 609 | 2466 | 300 | 29.0 | 121.8 |

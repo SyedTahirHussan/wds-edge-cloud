@@ -546,3 +546,22 @@ def test_station_cross_model_tie_flags_nothing():
     # Both sensors move together (a real change): no cross-model flag.
     a, b = _run_pair(_pair_station(), 3.0, 1.5)
     assert not any(r[4] & quality.CROSSCHECK for r in a + b)
+
+
+def test_memprobe_builds_a_station_from_json_like_specs():
+    from flowmine.edge.core import memprobe
+
+    hw = trained_hw()
+    xm = _ridge_spec([1], [0.0] * 7, 1.0, 1.0e30)
+    spec = {
+        "number": 3,
+        "pipelines": {
+            "0": {"meta": meta(xmodel=xm), "state": hw.state()},
+            "1": {"meta": meta(), "state": hw.state()},
+        },
+    }
+    st = memprobe.build(spec)
+    assert sorted(st.pipelines) == [0, 1] and 0 in st.xmodels and 1 not in st.xmodels
+    k0 = S2 * NTRAIN
+    out = st.process(0, k0 * P, seasonal(k0)) + st.process(1, k0 * P, seasonal(k0))
+    assert len(out) == 2

@@ -255,4 +255,5 @@ def e8(ctx: SeedContext) -> dict[str, pd.DataFrame]:
         "e8c_ablation": c,
         "e8_xmodels": xf,
         "e8_cusum": ctx.v2.cusum_choice.assign(seed=ctx.seed),
+        "e8d_int8": v2.int8_check(ctx.tb, ctx.v2.xfits, ctx.bundles).assign(seed=ctx.seed),
     }

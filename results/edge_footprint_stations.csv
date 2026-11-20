@@ -1,0 +1,13 @@
+station,station_class,version,sensors,samples,package_bytes,heap_built_bytes,heap_resident_bytes,max_alloc_one_sample_bytes,us_per_sample_micropython,us_per_sample_cpython,machine
+PS-10,pump,v0.1,2,576,91964,21888.0,22080.0,2560.0,33.0,3.7,laptop (not an ESP32)
+PS-10,pump,v0.2 float32,2,576,95987,24736.0,25568.0,20288.0,60.6,9.6,laptop (not an ESP32)
+PS-10,pump,v0.2 int8,2,576,94007,24416.0,25248.0,16192.0,54.3,10.3,laptop (not an ESP32)
+TK-1,tank,v0.1,2,384,59770,15872.0,16352.0,3264.0,28.4,4.0,laptop (not an ESP32)
+TK-1,tank,v0.2 float32,2,384,63805,18720.0,19776.0,76256.0,56.5,9.3,laptop (not an ESP32)
+TK-1,tank,v0.2 int8,2,384,61804,18400.0,19456.0,59872.0,56.0,10.4,laptop (not an ESP32)
+LG-131,logger,v0.1,2,384,63026,15712.0,15904.0,2464.0,24.8,3.7,laptop (not an ESP32)
+LG-131,logger,v0.2 float32,2,384,65715,17984.0,18720.0,20256.0,55.2,9.3,laptop (not an ESP32)
+LG-131,logger,v0.2 int8,2,384,64721,17824.0,18560.0,16160.0,49.6,9.2,laptop (not an ESP32)
+LG-101,logger,v0.1,1,288,45639,11264.0,11360.0,2464.0,21.1,3.9,laptop (not an ESP32)
+LG-101,logger,v0.2 float32,1,288,45688,11392.0,11552.0,2624.0,22.4,4.4,laptop (not an ESP32)
+LG-101,logger,v0.2 int8,1,288,45688,11392.0,11552.0,2624.0,41.7,4.7,laptop (not an ESP32)
