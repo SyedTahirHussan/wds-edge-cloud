@@ -28,7 +28,9 @@ distribution systems. It contains:
 - a SensorThings API data layer tested against FROST-Server;
 - central analytics that combine telecontrol series with laboratory results, a
   maintenance log and weather;
-- a bridge that drives an EPANET model from validated observations.
+- a bridge that drives an EPANET model from validated observations, and uses the
+  model's residuals to rank leak locations, check the pressure sensors and fit the
+  chlorine decay coefficient to laboratory results.
 
 All data are simulated from the EPANET benchmark network Net3. Nothing here has run at
 a utility or on a microcontroller: the edge code was tested under the MicroPython
@@ -50,18 +52,50 @@ flowchart LR
   G["Gateway<br/>frames → Observations"]
   S[("SensorThings v1.1<br/>FROST-Server")]
   C["Central analytics<br/>PCA / ridge, lab CUSUM,<br/>maintenance log, triage, fusion"]
-  T["EPANET bridge"]
+  T["EPANET bridge<br/>leak ranking, model check"]
   R[("Model registry")]
   D["Dashboard"]
   V -- "binary frames" --> G --> S
   S <--> C
-  S -- MQTT --> T -- "simulated, residual,<br/>virtual sensors" --> S
+  S -- MQTT --> T -- "simulated, residual,<br/>virtual sensors, leak candidates" --> S
   C --> R -- "model packages" --> V
   S --> D
 ```
 
 Details and the reasons for each technology choice are in
 [docs/architecture.md](docs/architecture.md).
+
+## What changed in v0.3
+
+Version 0.3 works on Phase 2: the hydraulic model becomes a diagnostic tool fed by the
+validated SensorThings data, and the quality model is calibrated from laboratory
+samples.
+
+- Leak localisation (E9). For each of the 92 junctions, the twin's network model gives
+  the change in the 12 monitored pressures caused by a leak there, against the same
+  extra demand spread over the network. During a leak the twin's mean residual vector
+  is compared with every column and the junctions are ranked ([R1]). E9 scores the
+  testbed's own leak and 20 synthetic leaks per seed with raw, edge-validated,
+  hybrid and clean inputs. The live twin publishes its first five candidates on a
+  `LEAK-CANDIDATES` Datastream.
+- A model level of validation (`central_model` in E1). The twin predicts every
+  pressure sensor from the validated boundary flows and levels; a sample is flagged
+  when its residual, after removing the part shared by all pressure sensors, leaves
+  a split conformal band set on week 7.
+- Chlorine decay from laboratory data (E10). A bulk-decay EPANET model is refitted
+  every day to the laboratory results already reported (24–48 h after sampling),
+  with and without the analysers, and scored on week 8 against the coefficients in
+  Net3.inp, the true kb and both true coefficients ([R4], [R20]).
+- Laboratory results now link a FeatureOfInterest for their sampling point, with
+  sampling time as `phenomenonTime` and reporting time as `resultTime`.
+
+The code is in `central/leak.py`, `experiments/leak_loc.py`,
+`experiments/model_validation.py` and `experiments/chlorine_cal.py`. With clean data
+the leak ranking puts the leak's node in the first five for most leaks; with measured
+data it does so for about a third, and validation hardly changes that. The model
+level has the lowest false-alarm rate of the central methods on the pressure sensors.
+The fitted decay coefficient beats the true one, because the model has no wall decay
+and the fit absorbs it. Phase 3 is as in v0.1.
 
 ## What changed in v0.2
 
@@ -93,10 +127,10 @@ false alarms and almost no detections. The station still misses most biases. Pha
 | DC11 item | modules | experiments |
 |---|---|---|
 | Phase 1: distributed validation and reconstruction at the edge | `edge/core`, `edge`, `edge/v2.py` | E1, E2, E3, E4, E8 |
-| Phase 2: analytics on heterogeneous SensorThings data (SCADA, laboratory, maintenance, external) | `sta`, `central` | E1, E2, maintenance and temperature checks |
+| Phase 2: analytics on heterogeneous SensorThings data (SCADA, laboratory, maintenance, external), with hydraulic and quality models | `sta`, `central`, `central/leak.py`, `twin` | E1 (incl. `central_model`), E2, E9, E10, maintenance and temperature checks |
 | Phase 3: integration and synergy of distributed and centralised results | `hybrid`, `experiments` | E1 (fusion), E2 (hybrid), E5, E6, E7 |
 | Outcome 1: edge data collection and validation framework | `edge/core`, `edge` | E1-E4, E8 |
-| Outcome 2: live IoT data connected to EPANET | `sta`, `twin` | E6, the demo |
+| Outcome 2: live IoT data connected to EPANET | `sta`, `twin`, `central/leak.py` | E6, E9, E10, the demo |
 | Outcome 3: decentralised storage with centralised model management | `edge/store.py`, `hybrid/registry.py`, `hybrid/federated.py` | E4, E5 |
 
 ## Quickstart
@@ -145,7 +179,7 @@ Configuration `default`, seeds 1, 2, 3, 4, 5; mean ± sample standard deviation 
 - Twin state error at unmonitored nodes: raw 0.92 m, edge-validated 0.67 m, hybrid 0.64 m, clean 0.47 m.
 - Process events: share of event samples reconstructed away central_only 0.016, edge_only 0.010, hybrid 0.011; share of sensor faults raised as events central_only 0.52, edge_only 0.42, hybrid 0.54.
 - Model-based validation on the pressure sensors (twin residual, conformal band at alpha 0.005): recall 0.48 against 0.61 for the spatial model, bias recall 0.39 against 0.69, false-alarm rate 0.0029 against 0.0397.
-- Leak localisation (E9, sensitivity matrix on the twin's residuals): top-5 share raw 0.34, edge_validated 0.34, hybrid_validated 0.36, clean 0.63; median distance from the top candidate to the leak raw 2534 m, edge_validated 2414 m, hybrid_validated 2368 m, clean 518 m.
+- Leak localisation (E9, sensitivity matrix on the twin's residuals): top-5 share raw 0.34, edge_validated 0.34, hybrid_validated 0.36, clean 0.63; median pipe distance between the first candidate and the leak raw 2534 m, edge_validated 2414 m, hybrid_validated 2368 m, clean 518 m.
 - Chlorine (E10, bulk-only model): kb estimated from laboratory results -0.80 /day (truth -0.50 /day plus wall decay); week-8 MAE at the laboratory points 0.038 mg/L with the estimate, 0.103 with the true kb and no wall term, 0.544 with the coefficients in Net3.inp (no decay), 0.023 with both true coefficients.
 
 **E1 detection** (overall, non-gap faults)
@@ -327,12 +361,40 @@ All tables, including E4, E5, E8 in full and the per-fault-type breakdown, are i
   monitored nodes, does worse on some seeds. The clean input does not reach zero
   error, because one demand multiplier cannot reproduce how demand is spread over the
   nodes.
+- The twin's residuals locate a leak when the data are clean: the leak's node is in
+  the first five of 92 candidates for 0.63 of the test leaks, and the first
+  candidate is a median 518 m of pipe away. With measured data, raw or validated, the
+  share falls to about a third and the distance to about 2.4 km. Validation as built
+  here barely moves either number.
+- On the pressure sensors, the twin-residual check reaches the highest F1 of the
+  central methods (0.623 against 0.544 for the spatial model) with a false-alarm rate
+  of 0.0029 against 0.0397. It catches spikes and drifts, finds fewer biases than
+  the spatial model (recall 0.39 against 0.69) and misses most frozen values, which
+  the station catches. Removing the residual shared by all pressure
+  sensors is what makes it work: without it the median threshold was 5.1 m instead of
+  2.0 m, and it found 0.13 of the week-7 faults instead of 0.57.
+- A bulk coefficient fitted to the laboratory results gives a week-8 error of 0.038
+  mg/L at the sampling points, against 0.103 for the true bulk coefficient in the same
+  bulk-only model and 0.544 for Net3.inp's coefficients, which have no decay. The fit
+  settles near −0.8 per day instead of −0.5 because it absorbs the wall decay the
+  model lacks. Only the model with both true coefficients does better (0.023).
 - Real process events (the leak, demand surges) are raised by the edge most often,
   because every level shift is reported, and by the central-only design least often.
   None of the three designs reconstructed an event away.
 
 Where the approach loses:
 
+- Leak localisation loses more between clean and measured inputs than any
+  validation stage wins back (top-5 share 0.63 against 0.34). The localisation is scored
+  with the leak's onset known; detecting the leak is a separate problem, and the live
+  twin's alarm rule was not evaluated. Most test leaks are added by superposition, so
+  the stations' reaction to them is not simulated.
+- Neither residual baseline (the previous day, or the mean of three previous days)
+  helped the leak ranking, on week 7 or week 8.
+- The model-based check covers only the pressure sensors, and a leak moves its
+  residual as a bias does. It is reported alone; the fusion does not use it yet.
+- Adding the analysers to the chlorine fit did not lower the error at the sampling
+  points (0.041 against 0.038 mg/L).
 - The v0.2 station still misses most biases and drifts. At the chlorine loggers
   pressure says little about chlorine, and at the pump and tank stations the
   cross-sensor residual has a spread close to the size of the injected faults. Single-
@@ -363,11 +425,13 @@ The full list, and what a utility deployment would need next, is in
 
 - simulated data on one small network;
 - laptop timings, no ESP32;
-- simplified chlorine kinetics;
+- simplified chlorine kinetics, with a bulk-only model in E10;
 - a synthetic maintenance log;
 - thresholds calibrated with labels of a calibration week;
 - a station that, even in v0.2, misses most bias and drift faults;
-- one demand multiplier in the twin;
+- one demand multiplier in the twin, which limits leak localisation even with clean
+  data;
+- leak tests mostly by superposition, with the onset known;
 - no security layer on MQTT or HTTP;
 - the neural network trained in numpy because PyTorch could not be installed here.
 
@@ -442,13 +506,17 @@ experimental protocol in [docs/experiments.md](docs/experiments.md).
 - [R19] Espressif Systems. ESP32 Series Datasheet, version 5.3, "CPU and Memory"
   (p. 4: 448 KB ROM, 520 KB SRAM, 16 KB SRAM in RTC).
   https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf
+- [R20] Rossman, L., Woo, H., Tryby, M., Shang, F., Janke, R., Haxton, T. (2020).
+  EPANET 2.2 User Manual. U.S. Environmental Protection Agency, EPA/600/R-20/133.
+  https://cfpub.epa.gov/si/si_public_record_report.cfm?Lab=CESER&dirEntryId=348882
 - LoRa Alliance (2022). LoRaWAN Regional Parameters RP002-1.0.4, section 2.4.6, table
   12 (EU863-870 maximum payload size).
   https://resources.lora-alliance.org/technical-specifications/rp002-1-0-4-regional-parameters
   (no DOI).
 
 R1–R11, R13–R17 were checked on Crossref and R18 on arXiv; the memory figures in
-R19 were read from the PDF itself. R2's author list comes from OpenAlex and
+R19 were read from the PDF itself. R20 was checked on the EPA Science Inventory
+record. R2's author list comes from OpenAlex and
 Semantic Scholar because the Crossref record has none. R12 was checked on arXiv and
 PMLR, and the LoRaWAN document on the LoRa Alliance site.
 

@@ -26,6 +26,34 @@ and week 8 holds a leak that week 7 does not, so E8a is an empirical check, not 
 proof. The reconstruction intervals cover less than their nominal level on the test
 week for the same reason and because a week holds few gaps of each length.
 
+### Leak localisation works on clean data, much less on measured data
+
+With noise-free inputs the leak's node is among the first five of 92 candidates for
+0.63 of the test leaks, and the first candidate is a median 518 m of pipe from the
+leak. With edge-validated inputs these become 0.34 and 2414 m, about what raw inputs
+give (`e9_leak.csv`, `results/summary.md`). Validation as built here does not close
+the gap: it removes spikes and frozen values, but most biases and drifts, and all
+meter noise, stay in the residual vector. Which of those costs more was not
+separated. Even the clean input stops short of the method's ideal, because the twin
+spreads demand with one multiplier while the testbed's demand varies node by node.
+
+The test leaks are mostly synthetic. They are added to the measurements by
+superposition, so the stations' reaction to a leak (level-shift flags, reconstructed
+values) and the triage's reaction are not simulated; only the testbed's own leak, one
+per seed, goes through the full pipeline. Leak onset is taken as known: E9 scores
+localisation, not detection. The live twin's alarm rule (`LeakWatcher`) was not
+evaluated.
+
+### The model-based level cannot tell a leak from a sensor fault
+
+The twin-residual check flags pressure faults with a false-alarm rate of 0.0029
+against 0.040 for the spatial model (`e1_pressure.csv`), but a leak moves the
+residual near the leak in the same way a bias does. It also covers only the pressure
+sensors, and it relies on the boundary meters: the common-mode correction helps when
+a boundary meter is wrong, but a fault that bends the pressure pattern unevenly
+still reaches the individual residuals. It is reported on its own; the fusion model
+does not use it yet.
+
 ### One small network
 
 Net3 has 92 junctions and one consumer (node 203) that takes
@@ -54,10 +82,18 @@ ESP32 matter:
 
 ### Simplified chlorine kinetics
 
-First-order bulk and wall decay with assumed
-coefficients, one source concentration and no temperature dependence. The laboratory
-results are the simulated concentration plus Gaussian noise. Real laboratory and
-analyser disagreement includes sampling-point and holding-time effects.
+The testbed uses first-order bulk and wall decay with
+assumed coefficients, one source concentration and no temperature dependence. The
+laboratory results are the simulated concentration plus Gaussian noise. Real
+laboratory and analyser disagreement includes sampling-point and holding-time effects.
+
+E10's model is bulk decay only, so its fitted kb (about −0.8 per day against the true
+−0.5, `e10_chlorine.csv`) is an effective value that absorbs the wall decay. It fits
+these five sampling points; whether one effective kb holds across a network with
+different pipe diameters and residence times was not tested. The fit runs on the
+twin's demand model offline, with the true total demand, not on the stepping bridge.
+A real calibration would follow [R4]: temperature-dependent kb, wall decay per pipe
+group, and the utility's own sampling programme.
 
 ### Synthetic maintenance log
 

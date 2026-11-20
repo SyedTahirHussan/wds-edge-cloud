@@ -23,7 +23,7 @@ RAW = ROOT / "results" / "raw"
 OUT = ROOT / "site" / "data.json"
 
 
-def r(x: float, n: int = 4) -> float | None:
+def r(x: float, n: int = 6) -> float | None:
     return None if x is None or not np.isfinite(x) else round(float(x), n)
 
 

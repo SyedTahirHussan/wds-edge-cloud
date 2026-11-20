@@ -1,6 +1,6 @@
 [project]
 name = "flowmine"
-version = "0.2.0"
+version = "0.3.0"
 description = "Edge/cloud data validation and SensorThings-EPANET integration for water distribution systems, on simulated data"
 authors = [{ name = "Syed Tahir Hussan" }]
 license = "MIT"

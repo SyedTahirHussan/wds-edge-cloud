@@ -419,3 +419,112 @@ With noise-free levels, true pump flows and true per-node demands, the bridge
 reproduces the reference simulation within 0.01 m; a test checks this. With the
 single multiplier, it cannot reproduce the node-to-node demand differences (node 203
 in particular), and this sets the floor of the E6 error.
+
+## Twin-based diagnosis (Phase 2, v0.3)
+
+Version 0.3 uses the twin's output for three diagnostic tasks. The code is in
+`central/leak.py` (sensitivity matrix, ranking, live watcher),
+`experiments/leak_loc.py` (E9), `experiments/model_validation.py` (the model level of
+validation, in E1) and `experiments/chlorine_cal.py` (E10).
+
+### Leak localisation with a sensitivity matrix
+
+This is the method of [R1], applied to the twin's residuals. The twin closes the water
+balance with the measured inflows, so a leak raises its total demand as well as the
+real one. What the residual sees is where the extra outflow goes. The sensitivity of
+monitored node i to a leak at junction j is therefore computed against a run with the
+same total demand spread over all junctions:
+
+    S[h, i, j] = (p_i(h; q at j, minus q · b_k / Σb at every junction k) − p_i(h; no leak)) / q
+
+with q = 10 L/s, b_k the base demands and h the hour of day. Each column comes from a
+48-hour extended-period run of the twin's own model (base demands times one daily
+multiplier profile, taken from the total demand of weeks 1–6); the second day is
+kept. There are 92 candidate junctions and 12 monitored pressure nodes. The matrix
+for one seed takes about 4 s and is cached under `data/`.
+
+During a leak with onset t₀ the residual vector is
+
+    r_i = mean over t in [t₀ + 6 h, t₀ + 12 h) of (y_i(t) − ŷ_i(t))  −  baseline_i
+
+(the leak ramps up over 6 h). Three baselines were compared: none; the mean over the
+same hours one day earlier; the mean over the same hours of the three previous days.
+Each candidate gets a score against the window's mean sensitivity column
+s̄_j = mean over the window's hours of S[h, :, j]:
+
+    angle:        cos θ_j = rᵀ s̄_j / (|r| |s̄_j|)
+    correlation:  the same after subtracting the mean over sensors from r and from s̄_j
+
+Sensors without a usable residual are left out of both vectors. The operating variant
+is the one with the highest share of week-7 test leaks in the top five (edge-validated
+input), then the lower median distance; week 7 chose no baseline and the angle.
+Both baselines did worse on week 7 and on week 8 (every variant is in
+`results/summary.md`); I did not separate why.
+
+The metrics are the rank of the leak's node among the 92 candidates and the length of
+the shortest pipe path between the first candidate and the leak. For a leak in the middle
+of a pipe (the testbed's own) the rank is that of the better-ranked end node, and the
+distance adds half the pipe length.
+
+In the live twin, `LeakWatcher` keeps the last 6 h of residuals. Every hour, when the
+norm of their mean vector reaches 0.5 m, it ranks the candidates and the service
+posts the first five on the `LEAK-CANDIDATES` Datastream. This alarm rule is a demo
+setting and was not evaluated. Its matrix uses multiplier 1, because the live service
+has no training history.
+
+### Model-based validation level
+
+The model level of the validation methodology [R5, R6]: the twin, driven by the
+edge-validated tank levels and flows, predicts each pressure sensor, and the sample as
+measured is compared with the prediction:
+
+    r_i(t)  = y_i(t) − ŷ_i(t)
+    r̃_i(t) = r_i(t) − median_k r_k(t)            (common mode removed)
+    s_i(t)  = |r̃_i(t) − μ_i(h_t)|,   μ_i(h) = week-7 median of r̃_i at hour h
+
+A sample is flagged when s_i(t) > q_i, with q_i the ⌈(n + 1)(1 − α)⌉-th smallest
+score among the n week-7 clean samples of sensor i [R18] and α = 0.005, the station's
+level. The common mode is removed because a fault on a boundary meter, or an
+operation the model does not know about, moves every pressure residual together;
+without the correction the median threshold was 5.1 m, against 2.0 m with it
+(`e1_model_bands.csv`). The choice between the two residuals was made on the recall
+of the labelled week-7 faults. The level covers the 12 pressure sensors only. A leak
+also moves the residual near the leak, so this level cannot by itself tell a leak
+from a sensor fault. The v0.1 fusion model is unchanged; the model level is reported
+on its own (`central_model` in E1).
+
+### Chlorine decay calibrated from laboratory data
+
+The quality model is EPANET's first-order bulk reaction [R20] on the twin's demand
+model, run as one extended-period simulation over the eight weeks: base demands
+times one multiplier, the total demand divided by the sum of base demands (what the
+water balance gives with clean meters). The process events are not in the model.
+Net3.inp has no reaction coefficients, so the model's wall coefficient is zero, while
+the testbed uses kb = −0.5 per day and a wall coefficient of −0.05 m per day. The
+fitted kb is therefore an effective coefficient that carries the wall decay too.
+
+EPANET runs once for each kb on a grid of 13 values between 0 and −3 per day. For an
+observation i at node n_i and time t_i, Ĉ_i(kb) is the simulated concentration,
+interpolated linearly in kb between grid points. On day d:
+
+    kb_d = argmin over kb in {0, −0.01, …, −3} of  Σ_{i ∈ W_d} (y_i − Ĉ_i(kb))²
+    W_d  = { i : t_i ≥ d − 14 days and a_i ≤ d }
+
+where a_i is the time the observation became available: the reporting time for a
+laboratory result (24–48 h after sampling) and the end of the hour for an analyser's
+hourly mean. Two variants: laboratory results only, and laboratory results plus
+analyser hourly means (raw samples in weeks 1–6, edge-validated unflagged samples in
+week 7). A moving-window fit was chosen over recursive least squares because the
+model is nonlinear in kb through transport and mixing; the grid with interpolation is
+exact at the grid points, cheap and deterministic, and the window does the
+forgetting.
+
+The value on the first day of week 8 is scored. Week 8 is simulated with kb fixed at:
+Net3.inp's value (no decay), the two estimates, the true kb with the model's zero
+wall coefficient, and both true coefficients (the floor set by the hydraulic model).
+The error is the mean absolute difference from the true concentration at the five
+analyser nodes and from the week-8 laboratory results.
+
+Simplified relative to [R4]: first-order bulk decay only, no temperature dependence
+(the testbed has none), one known source concentration, simulated laboratory noise
+(sd 0.01 mg/L), and a hydraulic model whose only error is the demand distribution.

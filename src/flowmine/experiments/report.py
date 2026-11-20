@@ -790,7 +790,7 @@ def e9_findings(d: dict[str, pd.DataFrame]) -> list[str]:
     return [
         "Leak localisation (E9, sensitivity matrix on the twin's residuals): top-5 share "
         + ", ".join(f"{i} {s.top5[i]:.2f}" for i in E9_INPUTS if i in s.index)
-        + "; median distance from the top candidate to the leak "
+        + "; median pipe distance between the first candidate and the leak "
         + ", ".join(f"{i} {s.median_distance_m[i]:.0f} m" for i in E9_INPUTS if i in s.index)
         + "."
     ]

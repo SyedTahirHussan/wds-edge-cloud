@@ -18,7 +18,7 @@ Configuration `default`, seeds 1, 2, 3, 4, 5; mean ± sample standard deviation 
 - Twin state error at unmonitored nodes: raw 0.92 m, edge-validated 0.67 m, hybrid 0.64 m, clean 0.47 m.
 - Process events: share of event samples reconstructed away central_only 0.016, edge_only 0.010, hybrid 0.011; share of sensor faults raised as events central_only 0.52, edge_only 0.42, hybrid 0.54.
 - Model-based validation on the pressure sensors (twin residual, conformal band at alpha 0.005): recall 0.48 against 0.61 for the spatial model, bias recall 0.39 against 0.69, false-alarm rate 0.0029 against 0.0397.
-- Leak localisation (E9, sensitivity matrix on the twin's residuals): top-5 share raw 0.34, edge_validated 0.34, hybrid_validated 0.36, clean 0.63; median distance from the top candidate to the leak raw 2534 m, edge_validated 2414 m, hybrid_validated 2368 m, clean 518 m.
+- Leak localisation (E9, sensitivity matrix on the twin's residuals): top-5 share raw 0.34, edge_validated 0.34, hybrid_validated 0.36, clean 0.63; median pipe distance between the first candidate and the leak raw 2534 m, edge_validated 2414 m, hybrid_validated 2368 m, clean 518 m.
 - Chlorine (E10, bulk-only model): kb estimated from laboratory results -0.80 /day (truth -0.50 /day plus wall decay); week-8 MAE at the laboratory points 0.038 mg/L with the estimate, 0.103 with the true kb and no wall term, 0.544 with the coefficients in Net3.inp (no decay), 0.023 with both true coefficients.
 
 ## E1 detection (overall, non-gap faults)

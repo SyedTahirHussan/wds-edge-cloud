@@ -127,6 +127,7 @@ noted:
 | `WEATHER` | hourly air temperature (Thing `External`) | external weather service |
 | `EVENTS` | events raised by the central analytics (Thing `Central`) | central analytics |
 | `UPLINK-STATS` | byte counters per station and policy, demo only (Thing `Central`) | central analytics |
+| `LEAK-CANDIDATES` | the twin's five best-ranked leak nodes, JSON result (Thing `Central`) | EPANET 2.2 hydraulic model |
 
 ## Observation
 
@@ -152,16 +153,67 @@ elements would need an adapter.
 
 A laboratory result. The sample was taken at `phenomenonTime`, the result was
 reported at `resultTime`, 31 hours later in this example. The cloud only uses a
-result once its `resultTime` has passed:
+result once its `resultTime` has passed. Since v0.3 each result links the
+FeatureOfInterest of its sampling point and carries the laboratory's sample id:
 
 ```json
 {
   "phenomenonTime": "2025-07-22T10:00:00Z",
   "resultTime": "2025-07-23T17:00:00Z",
   "result": 0.44,
-  "Datastream": {"@iot.id": 86}
+  "Datastream": {"@iot.id": 86},
+  "FeatureOfInterest": {"@iot.id": 12},
+  "parameters": {"sample_id": "LAB-00123"}
 }
 ```
+
+## FeatureOfInterest: laboratory sampling point
+
+Provisioning creates one FeatureOfInterest per sampling point (in this testbed, the
+five nodes with a chlorine analyser), found again by name on a second run:
+
+```json
+{
+  "name": "sampling point 15",
+  "description": "Laboratory grab-sample point at EPANET node 15",
+  "encodingType": "application/geo+json",
+  "feature": {"type": "Point", "coordinates": [38.68, 23.76]},
+  "properties": {"epanet_node": "15", "kind": "sampling_point"}
+}
+```
+
+The analyser's own observations carry no FeatureOfInterest, so FROST-Server derives
+one from the Thing's Location. A laboratory result and an analyser reading at the same
+node therefore point to different FeatureOfInterest entities with the same
+coordinates. Linking the analyser readings to the sampling point as well would let a
+query join them by feature; I left it out because the gateway would have to look up
+the feature id for every frame.
+
+## Leak candidates
+
+The live twin posts the five best-ranked leak nodes as one Observation on
+`LEAK-CANDIDATES` (observation type `OM_Observation`). `phenomenonTime` is the end of
+the residual window, `parameters` give its start and the ranking method:
+
+```json
+{
+  "phenomenonTime": "2025-07-24T12:00:00Z",
+  "resultTime": "2025-07-24T12:00:00Z",
+  "result": [
+    {"rank": 1, "node": "123", "score": 0.91},
+    {"rank": 2, "node": "125", "score": 0.88},
+    {"rank": 3, "node": "121", "score": 0.8},
+    {"rank": 4, "node": "120", "score": 0.7},
+    {"rank": 5, "node": "119", "score": 0.66}
+  ],
+  "Datastream": {"@iot.id": 91},
+  "parameters": {"window_start": "2025-07-24T06:00:00Z", "method": "angle"}
+}
+```
+
+An interval `phenomenonTime` (`start/end`) would describe the window more exactly; the
+instant plus `parameters` was kept because the client's frame loader parses instants
+only. The scores in this example are made up.
 
 ## Maintenance log
 
@@ -208,4 +260,5 @@ with `{"requests": [...]}`). The v1.1 standard itself defines only multipart bat
 the JSON form is a FROST extension. MQTT uses the v1.1 topics
 `v1.1/Datastreams(<id>)/Observations`, for publishing new observations and for
 subscribing. The contract tests (`tests/contract/`) check both against FROST-Server
-2.8.2.
+2.8.2, together with the laboratory result linked to its sampling point and the
+`LEAK-CANDIDATES` JSON result.
