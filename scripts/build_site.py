@@ -169,6 +169,56 @@ def phase2_data(cfg, d: dict[str, pd.DataFrame]) -> dict:
     }
 
 
+def phase3_data(d: dict[str, pd.DataFrame]) -> dict:
+    """Pareto sweep (mean over seeds per target), operating points, and the E12 and
+    trade-off rows exactly as the report writer formats them."""
+    from flowmine.experiments.report import phase3_tables
+
+    p = d["e11_pareto"]
+    sw = p[p.point == "sweep"]
+    sweep = sw.groupby(["method", "target"])[["false_alarm_rate", "recall"]].mean().reset_index()
+    op = p[p.point == "operating"]
+    t = phase3_tables(d, ROOT / "results")
+    c = d["e11_calib"]
+    return {
+        "sweep": [
+            {
+                "method": str(x["method"]),
+                "target": r(x["target"]),
+                "far": r(x["false_alarm_rate"]),
+                "recall": r(x["recall"]),
+            }
+            for x in sweep.to_dict("records")
+        ],
+        "operating": {
+            m: {
+                k: next(x for x in seed_stats(op, ["method"], k) if x["method"] == m)
+                for k in ("false_alarm_rate", "recall")
+            }
+            for m in sorted(op.method.unique())
+        },
+        "calib": [
+            {
+                "budget": r(float(bu)),
+                "calib": next(
+                    x
+                    for x in seed_stats(c, ["budget"], "calib_false_alarm_rate")
+                    if x["budget"] == bu
+                ),
+                "test": next(
+                    x
+                    for x in seed_stats(c, ["budget"], "test_false_alarm_rate")
+                    if x["budget"] == bu
+                ),
+            }
+            for bu in sorted(c.budget.unique())
+        ],
+        "budget": 0.01,
+        "e12": t["e12_rows"],
+        "tradeoff": t["trade_rows"],
+    }
+
+
 def main() -> None:
     cfg = load_config(ROOT / "configs" / "default.yaml")
     d = {f.stem: pd.read_csv(f) for f in sorted(RAW.glob("*.csv"))}
@@ -259,6 +309,7 @@ def main() -> None:
         "e6": {"unmonitored": e6_unmon},
         "phase1": phase1,
         "phase2": phase2,
+        "phase3": phase3_data(d),
     }
     OUT.write_text(json.dumps(data, separators=(",", ":")) + "\n")
     print(f"wrote {OUT.relative_to(ROOT)} ({OUT.stat().st_size // 1024} KB)")

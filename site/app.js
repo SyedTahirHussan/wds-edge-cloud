@@ -498,6 +498,69 @@ function kbChart(host, cl) {
   numbers(host, ["Day", ...data.map((d) => d.name)], shown.map((day) => { const i = days.indexOf(day); return [day, ...data.map((d) => `${fmt(d.v[i].mean)} ± ${fmt(d.v[i].sd)}`)]; }));
 }
 
+
+/* ---------- Phase 3 ---------- */
+const P3 = {
+  edge_hw: { name: "Station v0.1", c: "--neutral" },
+  edge_v2: { name: "Station v0.2", c: "--edge" },
+  central: { name: "Centre, spatial model", c: "--central" },
+  central_model: { name: "Centre, twin residual", c: "--central-2" },
+  hybrid: { name: "Hybrid v0.1", c: "--hybrid" },
+  stacked: { name: "Stacked, 1 % budget", c: "--hybrid-2" },
+};
+
+// Recall against false-alarm rate, log x axis, dashed reference at the budget.
+function paretoChart(host, p3) {
+  const keys = Object.keys(P3);
+  legend(host, keys.map((k) => ({ name: P3[k].name, c: P3[k].c, cls: "ln" })));
+  const narrow = host.clientWidth < 520;
+  const f = frame(host, narrow ? 320 : 380, { t: 30, r: 14, b: 40, l: 48 });
+  const lo = 0.0003, hi = 0.4;
+  const L = (v) => (Math.log(Math.min(Math.max(v, lo), hi)) - Math.log(lo)) / (Math.log(hi) - Math.log(lo));
+  const X = (v) => f.m.l + L(v) * f.iw, Y = (v) => f.m.t + f.ih - v * f.ih;
+  yAxis(f, 1, [0, 0.25, 0.5, 0.75, 1], (t) => pct(t), "Recall: share of faulty samples flagged");
+  const ticks = narrow ? [0.001, 0.01, 0.1] : [0.0003, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3];
+  ticks.forEach((t) => { const tx = el("text", { x: X(t), y: f.H - 22, "text-anchor": "middle", class: "lab" }, f.svg); tx.textContent = pct(t, t < 0.01 ? 2 : 0); });
+  const xt = el("text", { x: f.m.l + f.iw / 2, y: f.H - 4, "text-anchor": "middle", class: "lab" }, f.svg);
+  xt.textContent = "False-alarm rate on clean samples (log scale)";
+  el("line", { x1: X(p3.budget), x2: X(p3.budget), y1: f.m.t, y2: f.m.t + f.ih, class: "xh", "stroke-dasharray": "5 4" }, f.svg);
+  const bt = el("text", { x: X(p3.budget) + 4, y: f.m.t + 12, class: "lab" }, f.svg);
+  bt.textContent = "1 % budget";
+  keys.forEach((k) => {
+    const pts = p3.sweep.filter((x) => x.method === k).sort((a, b) => a.far - b.far);
+    const d = pts.map((x, i) => `${i ? "L" : "M"}${X(x.far).toFixed(1)},${Y(x.recall).toFixed(1)}`).join("");
+    el("path", { d, class: "series-line", stroke: `var(${P3[k].c})` }, f.svg);
+    pts.forEach((x) => {
+      const c = el("circle", { cx: X(x.far), cy: Y(x.recall), r: 4, fill: `var(${P3[k].c})`, stroke: "var(--paper)", "stroke-width": 1.5 }, f.svg);
+      const html = `<b>${P3[k].name}</b><br>False alarms ${pct(x.far, 2)}, recall ${pct(x.recall)}`;
+      c.addEventListener("mousemove", (e) => showTip(html, e.clientX, e.clientY));
+      c.addEventListener("mouseleave", hideTip);
+    });
+    const o = p3.operating[k];
+    const ring = el("circle", { cx: X(o.false_alarm_rate.mean), cy: Y(o.recall.mean), r: 8, fill: "none", stroke: `var(${P3[k].c})`, "stroke-width": 2.5 }, f.svg);
+    const html = `<b>${P3[k].name}, operating point</b><br>False alarms ${pct(o.false_alarm_rate.mean, 2)} ± ${pct(o.false_alarm_rate.sd, 2)}<br>Recall ${pct(o.recall.mean)} ± ${pct(o.recall.sd)}`;
+    ring.addEventListener("mousemove", (e) => showTip(html, e.clientX, e.clientY));
+    ring.addEventListener("mouseleave", hideTip);
+  });
+  numbers(host, ["Method", "False-alarm rate at its operating point", "Recall at its operating point"],
+    keys.map((k) => { const o = p3.operating[k]; return [P3[k].name, `${pct(o.false_alarm_rate.mean, 2)} ± ${pct(o.false_alarm_rate.sd, 2)}`, `${pct(o.recall.mean)} ± ${pct(o.recall.sd)}`]; }));
+}
+
+function rowsTable(id, head, rows) {
+  const t = document.getElementById(id);
+  t.innerHTML = `<thead><tr>${head.map((h) => `<th scope="col">${esc(h)}</th>`).join("")}</tr></thead><tbody>${rows
+    .map((r) => `<tr><th scope="row">${esc(r[0])}</th>${r.slice(1).map((c) => `<td>${esc(c)}</td>`).join("")}</tr>`).join("")}</tbody>`;
+}
+
+function phase3Tables(p3) {
+  const b = p3.calib.find((x) => x.budget === p3.budget);
+  document.getElementById("p3-far").textContent = `${pct(b.test.mean, 1)} ± ${pct(b.test.sd, 1)}`;
+  rowsTable("t-calib", ["Budget", "Week 7 (in-sample)", "Week 8"],
+    p3.calib.map((x) => [pct(x.budget, 1), `${pct(x.calib.mean, 2)}`, `${pct(x.test.mean, 2)} ± ${pct(x.test.sd, 2)}`]));
+  rowsTable("t-gains", ["Direction", "Mechanism", "Metric", "Without", "With", "Source"], p3.e12);
+  rowsTable("t-tradeoff", ["Architecture", "F1", "False-alarm rate", "Delay (min)", "Uplink B/station/day", "Twin RMSE, unmonitored (m)", "24 h link outage", "Edge RAM"], p3.tradeoff);
+}
+
 /* ---------- tables ---------- */
 function outageTable(rows) {
   const lab = { edge_store_forward: "Validation at the station", centralised_raw: "Validation in the cloud" };
@@ -544,6 +607,8 @@ fetch("data.json").then((r) => r.json()).then((d) => {
   v2Callouts(d.phase1);
   memoryTable(d.phase1.footprint);
   const p2 = d.phase2;
+  const p3 = d.phase3;
+  phase3Tables(p3);
   const redrawLeak = leakControls(d.network, p2.leak);
   model2Callouts(p2.e1_pressure);
   document.getElementById("kb-true").textContent = fmt(p2.chlorine.true_kb, 1);
@@ -575,6 +640,7 @@ fetch("data.json").then((r) => r.json()).then((d) => {
     recallChart(document.getElementById("c-model"), p2.e1_pressure, P2);
     hbars(document.getElementById("c-clmae"), clRows, { unit: "mg/L", digits: 3, axisTitle: "Chlorine MAE at the lab sampling points, week 8", labNarrow: 156 });
     kbChart(document.getElementById("c-kb"), p2.chlorine);
+    paretoChart(document.getElementById("c-pareto"), p3);
   };
   render();
   let t;

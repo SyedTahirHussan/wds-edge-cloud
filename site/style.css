@@ -16,6 +16,7 @@
   --central: #eb6834;
   --central-2: #a8461d;
   --hybrid: #1baf7a;
+  --hybrid-2: #0b7a55;
   --neutral: #8a979e;
   --neutral-2: #4f5d65;
   --code-bg: #e6edef;
@@ -36,6 +37,7 @@
     --central: #d95926;
     --central-2: #f2925f;
     --hybrid: #199e70;
+    --hybrid-2: #63d6ab;
     --neutral: #7a8a93;
     --neutral-2: #b5c3ca;
     --code-bg: #162b38;
@@ -56,6 +58,7 @@
   --central: #d95926;
     --central-2: #f2925f;
   --hybrid: #199e70;
+  --hybrid-2: #63d6ab;
   --neutral: #7a8a93;
   --neutral-2: #b5c3ca;
   --code-bg: #162b38;
@@ -233,6 +236,7 @@ details.numbers summary { cursor: pointer; color: var(--water); width: max-conte
 .tbl tbody th { font-weight: 500; color: var(--ink); }
 .tbl .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 0.45rem; vertical-align: 0; }
 .tbl td.best { font-weight: 700; }
+.tbl.wrap td, .tbl.wrap thead th { white-space: normal; min-width: 6.5rem; text-align: left; }
 
 .callouts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.5rem; margin-top: 1.6rem; }
 .tbl-scroll { overflow-x: auto; max-width: 100%; }

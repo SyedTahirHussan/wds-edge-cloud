@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import matplotlib
 
@@ -630,7 +631,7 @@ def _per_seed(df: pd.DataFrame, col: str) -> pd.Series:
     return df.groupby("seed")[col].mean()
 
 
-def phase3_tables(d: dict[str, pd.DataFrame], results: Path) -> dict[str, str]:
+def phase3_tables(d: dict[str, pd.DataFrame], results: Path) -> dict[str, Any]:
     """E11 (stacking), E12 (gains in each direction) and the trade-off table."""
     if "e11_stacked" not in d:
         return {}
@@ -780,8 +781,10 @@ def phase3_tables(d: dict[str, pd.DataFrame], results: Path) -> dict[str, str]:
         "| direction | mechanism | metric | without | with | source |",
         "|---|---|---|---|---|---|",
     ]
-    for dirn, mech, met, a, b, src, dig in rows:
-        lines.append(f"| {dirn} | {mech} | {met} | {pm(a, dig)} | {pm(b, dig)} | {src} |")
+    e12_rows = [
+        [dirn, mech, met, pm(a, dig), pm(b, dig), src] for dirn, mech, met, a, b, src, dig in rows
+    ]
+    lines += ["| " + " | ".join(row) + " |" for row in e12_rows]
     t12 = "\n".join(lines)
     # Trade-off table.
     st = d["e11_stacked"]
@@ -854,12 +857,20 @@ def phase3_tables(d: dict[str, pd.DataFrame], results: Path) -> dict[str, str]:
         "| twin RMSE at unmonitored nodes (m) | 24 h link outage | edge RAM (live heap) |",
         "|---|---|---|---|---|---|---|---|",
     ]
-    for name, key, up, tw, out, ram in spec:
-        g = det[key]
-        lines.append(
-            f"| {name} | {pm(g.f1)} | {pm(g.false_alarm_rate, 4)} | "
-            f"{pm(g.delay_min, 0)} | {up} | {tw} | {out} | {ram} |"
-        )
+    trade_rows = [
+        [
+            name,
+            pm(det[key].f1),
+            pm(det[key].false_alarm_rate, 4),
+            pm(det[key].delay_min, 0),
+            up,
+            tw,
+            out,
+            ram,
+        ]
+        for name, key, up, tw, out, ram in spec
+    ]
+    lines += ["| " + " | ".join(row) + " |" for row in trade_rows]
     trade = "\n".join(lines)
     return {
         "e11": t11,
@@ -868,6 +879,8 @@ def phase3_tables(d: dict[str, pd.DataFrame], results: Path) -> dict[str, str]:
         "e11_coef": t11k,
         "e11_triage": t11e,
         "e12": t12,
+        "e12_rows": e12_rows,
+        "trade_rows": trade_rows,
         "tradeoff": trade,
     }
 

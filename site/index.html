@@ -211,6 +211,31 @@
   </article>
 </section>
 
+<section id="phase3" class="results">
+  <h2>Phase 3 in v0.4: one model over both sides, and what each architecture costs</h2>
+  <p class="section-note">Version 0.4 adds a stacked detector: one logistic model that reads every score the station and the centre produce for a sample, with its threshold set for a false-alarm budget on week 7. The tables below compare it with the earlier designs. Same <span class="n-seeds">5</span> seeds, scored on week 8. The resilience matrix planned for this phase was not built.</p>
+
+  <article class="result" id="r-pareto">
+    <h3>The stacked model sits on the same front as hybrid v0.1, and its 1 % budget does not hold on week 8</h3>
+    <p>Each line sweeps one method's own score on week 8 and plots the share of faulty samples it flags against the share of clean samples it flags. Rule rejections, cross-checks and missing samples stay flagged at every threshold, which is why the station lines start to the right of the axis. Rings mark the operating point each method actually uses. The stacked model's threshold was chosen so that 1 % of clean week-7 samples were flagged; on week 8 it flags <span id="p3-far"></span> of them.</p>
+    <div class="chart" id="c-pareto" data-title="Recall against false-alarm rate on week 8, one line per method"></div>
+    <div class="tbl-scroll"><table class="tbl" id="t-calib"></table></div>
+  </article>
+
+  <article class="result" id="r-gains">
+    <h3>The centre adds recall to the station's flags; the station's flags did not help the centre's spatial model</h3>
+    <p>Each row holds everything else fixed and switches one exchange on. Edge-validated input lowers the twin's error at unmonitored nodes, but the spatial model scores slightly worse on it than on raw readings and leak ranking does not change. In the other direction, fusing the centre's spatial score with the v0.1 station's flags raises bias recall and raises the false-alarm rate with it, and a model trained in the cloud helps a new station's next-step forecast and hurts its day-ahead forecast.</p>
+    <div class="tbl-scroll"><table class="tbl wrap" id="t-gains"></table></div>
+  </article>
+
+  <article class="result" id="r-tradeoff">
+    <h3>What each architecture costs and buys</h3>
+    <p>Detection columns are E1 and E11 over all sensors; uplink is the validated policy for designs that validate at the station and the raw policy otherwise (E3); twin error is E6; the outage column is E4's 24 h link outage; RAM is the largest station's live heap under the MicroPython Unix port, not a measurement on an ESP32.</p>
+    <div class="tbl-scroll"><table class="tbl wrap" id="t-tradeoff"></table></div>
+  </article>
+</section>
+
+
 <section class="demo">
   <h2>The live demo</h2>
   <p>One process per station, a gateway, FROST-Server, the central analytics loop and the live twin, replaying two test days at 1,200 times real time. The dashboard reads only from SensorThings.</p>
