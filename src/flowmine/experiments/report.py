@@ -28,6 +28,7 @@ METHOD_NAMES = {
     "edge_mlp": "Edge, neural",
     "edge_v2": "Edge v0.2",
     "central": "Central (spatial + lab)",
+    "central_model": "Central, twin residual (pressure only)",
     "hybrid": "Hybrid fusion",
 }
 plt.rcParams.update({"svg.hashsalt": "flowmine", "font.size": 9, "figure.dpi": 110})
@@ -428,7 +429,41 @@ def build(cfg: Config, results: Path) -> tuple[str, str]:
         f"Configuration `{cfg.name}`, seeds {', '.join(map(str, seeds))}; mean ± sample standard "
         "deviation over seeds; test week only unless stated."
     )
-    key = "\n".join(f"- {s}" for s in findings(d) + e9_findings(d))
+    key = "\n".join(
+        f"- {s}" for s in findings(d) + model_findings(d) + e9_findings(d) + e10_findings(d)
+    )
+    t10 = e10_tables(d)
+    s10 = (
+        [
+            "## E10 chlorine decay calibrated from laboratory data (test week)",
+            t10["mae"],
+            "### E10 kb estimate over time (moving 14-day window, mean over seeds)",
+            t10["trajectory"],
+        ]
+        if t10
+        else []
+    )
+    r10 = (
+        ["**E10 chlorine decay** (week 8, EPANET with fixed coefficients)", t10["mae"]]
+        if t10
+        else []
+    )
+    tm = model_tables(d)
+    sm = (
+        [
+            "## E1 on the pressure sensors (model-based level, P2.2)",
+            tm["pressure"],
+            "### Twin-residual band: clean samples outside it",
+            tm["bands"],
+        ]
+        if tm
+        else []
+    )
+    rm = (
+        ["**E1 on the pressure sensors**, with the twin-residual validator", tm["pressure"]]
+        if tm
+        else []
+    )
     t9 = e9_tables(d)
     s9 = (
         [
@@ -459,6 +494,7 @@ def build(cfg: Config, results: Path) -> tuple[str, str]:
                 t_e1,
                 "### E1 by fault type",
                 t_e1t,
+                *sm,
                 "## E2 reconstruction MAE by gap length",
                 *[f"### {k}\n\n{v}" for k, v in t_e2.items()],
                 "## E3 uplink policies",
@@ -490,6 +526,7 @@ def build(cfg: Config, results: Path) -> tuple[str, str]:
                 "### E8d int8 weights (mean RMSE over sensors, clean samples; physical units)",
                 int8_table(d),
                 *s9,
+                *s10,
                 *(["## Station footprint (P1.5)", t_fps] if t_fps else []),
                 *(["## Edge footprint", t_fp] if t_fp else []),
             ]
@@ -502,6 +539,7 @@ def build(cfg: Config, results: Path) -> tuple[str, str]:
             key,
             "**E1 detection** (overall, non-gap faults)",
             t_e1,
+            *rm,
             "**E8 v0.2 station**: ablation on the test week (E1 metrics)",
             t8["e8c"],
             "**E8a conformal thresholds**, one table per sensor: nominal level against "
@@ -518,6 +556,7 @@ def build(cfg: Config, results: Path) -> tuple[str, str]:
             "**E7 process events**",
             t_e7,
             *r9,
+            *r10,
             *(["**Edge footprint**", t_fp] if t_fp else []),
             *(["**Station footprint (v0.1 and v0.2)**", t_fps] if t_fps else []),
             "![Recall by fault type](results/figures/e1_recall_by_fault.png)",
@@ -614,6 +653,122 @@ def e9_tables(d: dict[str, pd.DataFrame]) -> dict[str, str]:
         order=E9_INPUTS,
     )
     return out
+
+
+def model_tables(d: dict[str, pd.DataFrame]) -> dict[str, str]:
+    """P2.2: the twin-residual validator on the pressure sensors."""
+    out: dict[str, str] = {}
+    if "e1_pressure" not in d:
+        return out
+    p = d["e1_pressure"]
+    types = ["spike", "stuck", "noise_burst", "bias", "drift"]
+    piv = p[p.fault_type.isin([*types, "overall"])]
+    lines = [
+        "| method | " + " | ".join(f"{t} recall" for t in types) + " | overall recall | F1 | "
+        "false-alarm rate | alarms on process events |",
+        "|---|" + "---|" * (len(types) + 4),
+    ]
+    for m in p.method.drop_duplicates():
+        g = piv[piv.method == m]
+        ov = g[g.fault_type == "overall"]
+        cells = [pm(g[g.fault_type == t].recall, 2) for t in types]
+        cells += [
+            pm(ov.recall, 2),
+            pm(ov.f1, 3),
+            pm(ov.false_alarm_rate, 4),
+            pm(ov.process_event_alarm_rate, 3),
+        ]
+        lines.append(f"| {METHOD_NAMES.get(m, m)} | " + " | ".join(cells) + " |")
+    out["pressure"] = "\n".join(lines)
+    b = d["e1_model_bands"]
+    per = (
+        b.groupby(["seed", "period"])
+        .agg(rate=("clean_flag_rate", "mean"), q=("q_m", "median"))
+        .reset_index()
+    )
+    out["bands"] = table(
+        per,
+        ["period"],
+        {"rate": "share of clean samples outside the band", "q": "median threshold (m)"},
+        digits=4,
+        order=["calib", "test"],
+    )
+    return out
+
+
+def model_findings(d: dict[str, pd.DataFrame]) -> list[str]:
+    if "e1_pressure" not in d:
+        return []
+    p = d["e1_pressure"]
+    ov = p[p.fault_type == "overall"].groupby("method")[["recall", "false_alarm_rate"]].mean()
+    rec = p.groupby(["method", "fault_type"]).recall.mean()
+    alpha = float(d["e1_model_bands"].alpha.iloc[0])
+    return [
+        "Model-based validation on the pressure sensors (twin residual, conformal band at "
+        f"alpha {alpha:g}): recall {ov.recall['central_model']:.2f} "
+        f"against {ov.recall['central']:.2f} for the spatial model, bias recall "
+        f"{rec['central_model', 'bias']:.2f} against {rec['central', 'bias']:.2f}, false-alarm "
+        f"rate {ov.false_alarm_rate['central_model']:.4f} against "
+        f"{ov.false_alarm_rate['central']:.4f}."
+    ]
+
+
+E10_CASES = [
+    "default (Net3.inp coefficients)",
+    "estimated, lab",
+    "estimated, lab + analysers",
+    "true kb, model wall",
+    "true kb and wall",
+]
+
+
+def e10_tables(d: dict[str, pd.DataFrame]) -> dict[str, str]:
+    out: dict[str, str] = {}
+    if "e10_chlorine" not in d:
+        return out
+    out["mae"] = table(
+        d["e10_chlorine"],
+        ["case"],
+        {
+            "kb_per_day": "kb (1/day)",
+            "kw_m_per_day": "wall (m/day)",
+            "mae_analyser_nodes_mg_l": "MAE at analyser nodes (mg/L)",
+            "mae_lab_points_mg_l": "MAE at lab points (mg/L)",
+        },
+        digits=3,
+        order=E10_CASES,
+    )
+    tr = d["e10_kb_trajectory"]
+    days = sorted(tr.day.unique())
+    pick = [x for x in (days[0], 7, 14, 28, days[-1]) if x in days]
+    sub = tr[tr.day.isin(pick)]
+    lines = ["| day | " + " | ".join(f"kb, {v} (1/day)" for v in ("lab", "lab_analyser")) + " |"]
+    lines.append("|---|---|---|")
+    for day in pick:
+        g = sub[sub.day == day]
+        lines.append(
+            f"| {day} | "
+            + " | ".join(pm(g[g.variant == v].kb_per_day, 2) for v in ("lab", "lab_analyser"))
+            + " |"
+        )
+    out["trajectory"] = "\n".join(lines)
+    return out
+
+
+def e10_findings(d: dict[str, pd.DataFrame]) -> list[str]:
+    if "e10_chlorine" not in d:
+        return []
+    c = d["e10_chlorine"].groupby("case")[["kb_per_day", "mae_lab_points_mg_l"]].mean()
+    return [
+        "Chlorine (E10, bulk-only model): kb estimated from laboratory results "
+        f"{c.kb_per_day['estimated, lab']:.2f} /day (truth {c.kb_per_day['true kb and wall']:.2f} "
+        "/day plus wall decay); week-8 MAE at the laboratory points "
+        f"{c.mae_lab_points_mg_l['estimated, lab']:.3f} mg/L with the estimate, "
+        f"{c.mae_lab_points_mg_l['true kb, model wall']:.3f} with the true kb and no wall term, "
+        f"{c.mae_lab_points_mg_l['default (Net3.inp coefficients)']:.3f} with the "
+        "coefficients in Net3.inp (no decay), "
+        f"{c.mae_lab_points_mg_l['true kb and wall']:.3f} with both true coefficients."
+    ]
 
 
 def e9_findings(d: dict[str, pd.DataFrame]) -> list[str]:

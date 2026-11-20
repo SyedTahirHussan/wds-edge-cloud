@@ -17,7 +17,9 @@ Configuration `default`, seeds 1, 2, 3, 4, 5; mean ± sample standard deviation 
 - Cold-start station, one-step RMSE: local 2.220 m, centralised 1.705 m, federated 2.136 m, federated with fine-tuning 2.102 m.
 - Twin state error at unmonitored nodes: raw 0.92 m, edge-validated 0.67 m, hybrid 0.64 m, clean 0.47 m.
 - Process events: share of event samples reconstructed away central_only 0.016, edge_only 0.010, hybrid 0.011; share of sensor faults raised as events central_only 0.52, edge_only 0.42, hybrid 0.54.
+- Model-based validation on the pressure sensors (twin residual, conformal band at alpha 0.005): recall 0.48 against 0.61 for the spatial model, bias recall 0.39 against 0.69, false-alarm rate 0.0029 against 0.0397.
 - Leak localisation (E9, sensitivity matrix on the twin's residuals): top-5 share raw 0.34, edge_validated 0.34, hybrid_validated 0.36, clean 0.63; median distance from the top candidate to the leak raw 2534 m, edge_validated 2414 m, hybrid_validated 2368 m, clean 518 m.
+- Chlorine (E10, bulk-only model): kb estimated from laboratory results -0.80 /day (truth -0.50 /day plus wall decay); week-8 MAE at the laboratory points 0.038 mg/L with the estimate, 0.103 with the true kb and no wall term, 0.544 with the coefficients in Net3.inp (no decay), 0.023 with both true coefficients.
 
 ## E1 detection (overall, non-gap faults)
 
@@ -28,6 +30,7 @@ Configuration `default`, seeds 1, 2, 3, 4, 5; mean ± sample standard deviation 
 | Edge, neural | 0.513 ± 0.058 | 0.090 ± 0.010 | 0.153 ± 0.017 | 0.740 ± 0.102 | 0.108 ± 0.024 | 109.134 ± 58.190 | 0.006 ± 0.001 | 0.007 ± 0.002 |
 | Edge v0.2 | 0.428 ± 0.060 | 0.181 ± 0.087 | 0.248 ± 0.099 | 0.790 ± 0.089 | 0.099 ± 0.016 | 172.988 ± 69.529 | 0.015 ± 0.005 | 0.025 ± 0.006 |
 | Central (spatial + lab) | 0.499 ± 0.231 | 0.367 ± 0.138 | 0.393 ± 0.140 | 0.440 ± 0.195 | 0.129 ± 0.034 | 126.414 ± 219.748 | 0.035 ± 0.039 | 0.067 ± 0.025 |
+| Central, twin residual (pressure only) | 0.920 ± 0.059 | 0.267 ± 0.033 | 0.413 ± 0.038 | 0.290 ± 0.042 | 0.090 ± 0.044 | 154.157 ± 177.908 | 0.002 ± 0.002 | 0.025 ± 0.015 |
 | Hybrid fusion | 0.470 ± 0.209 | 0.428 ± 0.078 | 0.427 ± 0.103 | 0.650 ± 0.137 | 0.094 ± 0.029 | 197.483 ± 138.301 | 0.041 ± 0.029 | 0.082 ± 0.051 |
 
 ### E1 by fault type
@@ -69,6 +72,13 @@ Configuration `default`, seeds 1, 2, 3, 4, 5; mean ± sample standard deviation 
 | Central (spatial + lab) | drift | 0.28 ± 0.18 | 0.27 ± 0.19 | 735.00 ± 1144.04 |
 | Central (spatial + lab) | bias | 0.62 ± 0.41 | 0.36 ± 0.30 | 0.00 ± 0.00 |
 | Central (spatial + lab) | noise_burst | 0.24 ± 0.26 | 0.05 ± 0.05 | 19.72 ± 15.42 |
+| Central, twin residual (pressure only) | gap_short | 1.00 ± 0.00 | 0.60 ± 0.18 | 0.00 ± 0.00 |
+| Central, twin residual (pressure only) | gap_long | 1.00 ± 0.00 | 0.94 ± 0.05 | 0.00 ± 0.00 |
+| Central, twin residual (pressure only) | stuck | 0.06 ± 0.13 | 0.06 ± 0.13 | 146.25 ± 15.91 |
+| Central, twin residual (pressure only) | spike | 0.33 ± 0.14 | 0.15 ± 0.08 | 0.00 ± 0.00 |
+| Central, twin residual (pressure only) | drift | 0.25 ± 0.21 | 0.35 ± 0.27 | 771.25 ± 980.68 |
+| Central, twin residual (pressure only) | bias | 0.36 ± 0.43 | 0.41 ± 0.44 | 105.62 ± 209.59 |
+| Central, twin residual (pressure only) | noise_burst | 0.05 ± 0.09 | 0.06 ± 0.13 | 28.75 ± 37.12 |
 | Hybrid fusion | gap_short | 1.00 ± 0.00 | 0.07 ± 0.06 | 0.00 ± 0.00 |
 | Hybrid fusion | gap_long | 1.00 ± 0.00 | 0.48 ± 0.26 | 0.00 ± 0.00 |
 | Hybrid fusion | stuck | 0.61 ± 0.21 | 0.19 ± 0.16 | 72.33 ± 13.00 |
@@ -76,6 +86,23 @@ Configuration `default`, seeds 1, 2, 3, 4, 5; mean ± sample standard deviation 
 | Hybrid fusion | drift | 0.31 ± 0.09 | 0.28 ± 0.08 | 793.00 ± 321.10 |
 | Hybrid fusion | bias | 0.66 ± 0.39 | 0.35 ± 0.28 | 176.67 ± 382.13 |
 | Hybrid fusion | noise_burst | 0.31 ± 0.24 | 0.05 ± 0.05 | 26.17 ± 19.49 |
+
+## E1 on the pressure sensors (model-based level, P2.2)
+
+| method | spike recall | stuck recall | noise_burst recall | bias recall | drift recall | overall recall | F1 | false-alarm rate | alarms on process events |
+|---|---|---|---|---|---|---|---|---|---|
+| Edge, Holt-Winters | 1.00 ± 0.00 | 0.82 ± 0.07 | 0.26 ± 0.08 | 0.01 ± 0.00 | 0.01 ± 0.01 | 0.09 ± 0.02 | 0.153 ± 0.033 | 0.0053 ± 0.0010 | 0.009 ± 0.002 |
+| Edge v0.2 | 1.00 ± 0.00 | 0.82 ± 0.07 | 0.20 ± 0.20 | 0.11 ± 0.14 | 0.17 ± 0.20 | 0.22 ± 0.12 | 0.282 ± 0.123 | 0.0165 ± 0.0076 | 0.020 ± 0.009 |
+| Central (spatial + lab) | 0.65 ± 0.34 | 0.21 ± 0.28 | 0.38 ± 0.12 | 0.69 ± 0.45 | 0.56 ± 0.47 | 0.61 ± 0.28 | 0.544 ± 0.187 | 0.0397 ± 0.0458 | 0.077 ± 0.020 |
+| Central, twin residual (pressure only) | 0.85 ± 0.22 | 0.08 ± 0.16 | 0.15 ± 0.18 | 0.39 ± 0.44 | 0.61 ± 0.40 | 0.48 ± 0.15 | 0.623 ± 0.137 | 0.0029 ± 0.0026 | 0.036 ± 0.022 |
+| Hybrid fusion | 0.53 ± 0.40 | 0.54 ± 0.31 | 0.43 ± 0.25 | 0.74 ± 0.43 | 0.65 ± 0.30 | 0.66 ± 0.18 | 0.571 ± 0.104 | 0.0435 ± 0.0372 | 0.084 ± 0.052 |
+
+### Twin-residual band: clean samples outside it
+
+| period | share of clean samples outside the band | median threshold (m) |
+|---|---|---|
+| calib | 0.0042 ± 0.0001 | 3.5069 ± 0.4762 |
+| test | 0.0025 ± 0.0020 | 3.5069 ± 0.4762 |
 
 ## E2 reconstruction MAE by gap length
 
@@ -353,6 +380,26 @@ Operating variant chosen on week 7 (edge-validated input, synthetic cases): base
 | day1 | angle | 21.00 ± 7.59 | 3606.39 ± 1477.03 | 0.21 ± 0.13 | 0.37 ± 0.15 |
 | day3 | correlation | 24.20 ± 4.22 | 3256.23 ± 1308.09 | 0.18 ± 0.08 | 0.28 ± 0.10 |
 | day3 | angle | 27.60 ± 12.01 | 3780.37 ± 1545.23 | 0.17 ± 0.08 | 0.24 ± 0.07 |
+
+## E10 chlorine decay calibrated from laboratory data (test week)
+
+| case | kb (1/day) | wall (m/day) | MAE at analyser nodes (mg/L) | MAE at lab points (mg/L) |
+|---|---|---|---|---|
+| default (Net3.inp coefficients) | 0.000 ± 0.000 | 0.000 ± 0.000 | 0.539 ± 0.003 | 0.544 ± 0.010 |
+| estimated, lab | -0.800 ± 0.012 | 0.000 ± 0.000 | 0.049 ± 0.004 | 0.038 ± 0.008 |
+| estimated, lab + analysers | -0.848 ± 0.008 | 0.000 ± 0.000 | 0.047 ± 0.003 | 0.041 ± 0.008 |
+| true kb, model wall | -0.500 ± 0.000 | 0.000 ± 0.000 | 0.116 ± 0.005 | 0.103 ± 0.011 |
+| true kb and wall | -0.500 ± 0.000 | -0.050 ± 0.000 | 0.023 ± 0.003 | 0.023 ± 0.008 |
+
+### E10 kb estimate over time (moving 14-day window, mean over seeds)
+
+| day | kb, lab (1/day) | kb, lab_analyser (1/day) |
+|---|---|---|
+| 2 | -0.86 ± 0.07 | -0.86 ± 0.02 |
+| 7 | -0.79 ± 0.02 | -0.84 ± 0.00 |
+| 14 | -0.79 ± 0.03 | -0.84 ± 0.00 |
+| 28 | -0.80 ± 0.02 | -0.84 ± 0.00 |
+| 49 | -0.80 ± 0.01 | -0.85 ± 0.01 |
 
 ## Station footprint (P1.5)
 

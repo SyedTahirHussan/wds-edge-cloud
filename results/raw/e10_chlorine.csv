@@ -1,0 +1,26 @@
+seed,case,kb_per_day,kw_m_per_day,mae_analyser_nodes_mg_l,mae_lab_points_mg_l,n_lab
+1,default (Net3.inp coefficients),0,0,0.542442,0.532737,25
+1,"estimated, lab",-0.79,0,0.0530032,0.0374615,25
+1,"estimated, lab + analysers",-0.84,0,0.0499939,0.044542,25
+1,"true kb, model wall",-0.5,0,0.120147,0.100624,25
+1,true kb and wall,-0.5,-0.05,0.0252865,0.0260523,25
+2,default (Net3.inp coefficients),0,0,0.535221,0.55873,25
+2,"estimated, lab",-0.79,0,0.0472065,0.0380833,25
+2,"estimated, lab + analysers",-0.85,0,0.0453297,0.0373282,25
+2,"true kb, model wall",-0.5,0,0.110217,0.110476,25
+2,true kb and wall,-0.5,-0.05,0.0221606,0.0213737,25
+3,default (Net3.inp coefficients),0,0,0.540906,0.54473,25
+3,"estimated, lab",-0.82,0,0.0463188,0.034753,25
+3,"estimated, lab + analysers",-0.86,0,0.0454897,0.0366898,25
+3,"true kb, model wall",-0.5,0,0.114717,0.0986899,25
+3,true kb and wall,-0.5,-0.05,0.020579,0.0216887,25
+4,default (Net3.inp coefficients),0,0,0.538979,0.544734,25
+4,"estimated, lab",-0.8,0,0.0532192,0.0295602,25
+4,"estimated, lab + analysers",-0.84,0,0.0510459,0.0348939,25
+4,"true kb, model wall",-0.5,0,0.1215,0.0886235,25
+4,true kb and wall,-0.5,-0.05,0.0265363,0.0134625,25
+5,default (Net3.inp coefficients),0,0,0.535991,0.537544,25
+5,"estimated, lab",-0.8,0,0.0459788,0.0518899,25
+5,"estimated, lab + analysers",-0.85,0,0.0438964,0.0531789,25
+5,"true kb, model wall",-0.5,0,0.115591,0.117851,25
+5,true kb and wall,-0.5,-0.05,0.0193457,0.0348289,25

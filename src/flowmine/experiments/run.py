@@ -23,6 +23,8 @@ from flowmine.experiments.context import SeedContext
 log = logging.getLogger(__name__)
 EXPERIMENTS = (
     "e1_detection",
+    "e1_pressure",
+    "e1_model_bands",
     "e2_reconstruction",
     "e3_policies",
     "e3_epsilon",
@@ -41,6 +43,8 @@ EXPERIMENTS = (
     "e8d_int8",
     "e9_leak",
     "e9_leak_calib",
+    "e10_chlorine",
+    "e10_kb_trajectory",
 )
 
 
@@ -83,11 +87,13 @@ def temperature_check(ctx: SeedContext) -> pd.DataFrame:
 
 def run_seed(cfg: Config, seed: int) -> dict[str, pd.DataFrame]:
     from flowmine.experiments import (
+        chlorine_cal,
         comms,
         context,
         detection,
         edge_v2,
         leak_loc,
+        model_validation,
         reconstruction,
         training,
         twin_value,
@@ -97,7 +103,9 @@ def run_seed(cfg: Config, seed: int) -> dict[str, pd.DataFrame]:
     logging.basicConfig(level=logging.WARNING)
     ctx = context.build_context(cfg, seed)
     out: dict[str, pd.DataFrame] = {}
-    out["e1_detection"], _ = detection.e1(ctx)
+    out["e1_detection"], flags = detection.e1(ctx)
+    out["e1_pressure"] = detection.e1_pressure(ctx, flags)
+    out["e1_model_bands"] = model_validation.band_table(ctx)
     out["e2_reconstruction"] = reconstruction.e2(ctx)
     out["e3_policies"], out["e3_epsilon"] = comms.e3(ctx)
     out["e4_outage"] = comms.e4(ctx)
@@ -109,6 +117,7 @@ def run_seed(cfg: Config, seed: int) -> dict[str, pd.DataFrame]:
     out["x2_temperature"] = temperature_check(ctx)
     out.update(edge_v2.e8(ctx))
     out.update(leak_loc.e9(ctx))
+    out.update(chlorine_cal.e10(ctx))
     return out
 
 
