@@ -106,6 +106,8 @@ def method_flags(ctx: SeedContext, period: str, fusion: Fusion | None) -> pd.Dat
     out["central_model"] = (
         mf.model_flag.fillna(False).astype(bool).to_numpy() | lab.missing.to_numpy()
     )
+    out["model_ratio"] = mf.model_ratio.astype(float).to_numpy()
+    out["lab_drift"] = in_val
     x = features(out.edge_hw.to_numpy(), out.edge_hw_shift.to_numpy(), val_r)
     fused = fusion.predict(x) if fusion is not None else np.zeros(len(out), dtype=bool)
     out["hybrid"] = np.where(is_cl, out.edge_hw.to_numpy() | in_val, fused) | lab.missing.to_numpy()
@@ -115,6 +117,7 @@ def method_flags(ctx: SeedContext, period: str, fusion: Fusion | None) -> pd.Dat
 
 def fit_fusion(ctx: SeedContext) -> Fusion:
     f = method_flags(ctx, "calib", None)
+    ctx.cache["flags_calib"] = f
     hyd = ~f.sensor_id.isin(ctx.chlorine_ids) & ~f.fault_type.isin(GAPS)
     x = features(f.edge_hw.to_numpy(), f.edge_hw_shift.to_numpy(), f.hybrid_ratio.to_numpy())[hyd]
     y = (f.fault_type != "").to_numpy()[hyd]
@@ -200,6 +203,7 @@ def score(
 
 def e1(ctx: SeedContext) -> tuple[pd.DataFrame, pd.DataFrame]:
     fusion = fit_fusion(ctx)
+    ctx.cache["fusion"] = fusion
     flags = method_flags(ctx, "test", fusion)
     return score(ctx, flags).assign(seed=ctx.seed), flags
 
@@ -280,8 +284,12 @@ def _event_ops(ctx: SeedContext, g: homogenise.Grid) -> np.ndarray:
     return _grid_mask(g, sub)
 
 
-def e7(ctx: SeedContext) -> pd.DataFrame:
-    """Process events reconstructed away / sensor faults raised as events, per architecture."""
+def e7(ctx: SeedContext, stacked: pd.DataFrame | None = None) -> pd.DataFrame:
+    """Process events reconstructed away / sensor faults raised as events, per architecture.
+
+    With ``stacked`` (sensor_id, time_s, flag from E11) only the stacked architecture
+    is scored: its flagged samples are the ones the centre replaces, and the process
+    events raised are the hybrid triage's event participants it does not flag."""
     period = "test"
     w = ctx.cfg.central.triage_window
     _, _, flag_raw, _ = spatial_long(ctx, ctx.raw(period), "raw", period)
@@ -313,6 +321,12 @@ def e7(ctx: SeedContext) -> pd.DataFrame:
         "central_only": (cen.fault, central_event),
         "hybrid": (hyb.fault, hyb.event_sensors),
     }
+    if stacked is not None:
+        sub = stacked[
+            stacked.flag & stacked.sensor_id.isin(g_val.streams) & stacked.time_s.isin(g_val.times)
+        ]
+        sm = _grid_mask(g_val, sub)
+        arch = {"stacked": (sm, hyb.event_sensors & ~sm)}
     lab = ctx.tb.labels
     idx = {s: j for j, s in enumerate(g_val.streams)}
     events = ctx.tb.events[

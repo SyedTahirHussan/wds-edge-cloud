@@ -36,6 +36,8 @@ class EdgeRun:
     records: pd.DataFrame  # the station's own view: sensor_id, time_s, raw, value, q, score
     frame: pd.DataFrame  # the cloud's view after the gateway (tidy SensorThings frame)
     nodes: dict[str, object] = field(default_factory=dict)
+    trace: pd.DataFrame | None = None  # forecast residual trace: sensor_id, time_s, z, f
+    xtrace: pd.DataFrame | None = None  # cross-sensor residual trace: sensor_id, time_s, xz
 
 
 @dataclass
@@ -77,21 +79,39 @@ def run_edge(
     policy: str,
     t0: int,
     t1: int,
+    trace: bool = False,
 ) -> EdgeRun:
+    """Run every station over [t0, t1). ``trace`` also collects the residual traces
+    (observation only: the records are the same)."""
     rows, bodies = [], []
+    tr: list[tuple[str, int, float, int]] = []
+    xt: list[tuple[str, int, float]] = []
     start = replay.start_time(tb.cfg)
     ds = replay.datastream_ids(tb)
     gw = Gateway(tb.stations, tb.sensors, ds, start, summary_s=tb.cfg.edge.summary_s)
     for spec in tb.stations:
         link = MemoryLink()
         node = replay.make_node(tb, spec, bundles, policy, forecaster, link=link)
+        by_local = {tb.sensor(s).local_id: s for s in spec.sensors}
+        if trace:
+            for p in node.core.pipelines.values():
+                p.trace = []
+            node.core.xtrace = []
         replay.run_station(node, tb, t0, t1)
+        if trace:
+            for lid, p in node.core.pipelines.items():
+                tr += [(by_local[lid], t, z, f) for t, z, f in p.trace]
+            xt += [(by_local[lid], t, z) for lid, t, z in node.core.xtrace]
         rows.extend(node.records)
         for _, fr in link.frames:
             bodies.extend(gw.decode(fr))
     rec = pd.DataFrame(rows, columns=["sensor_id", "time_s", "raw", "value", "q", "score"])
     names = {v: k for k, v in ds.items()}
-    return EdgeRun(rec, frame_from_bodies(bodies, names, start))
+    out = EdgeRun(rec, frame_from_bodies(bodies, names, start))
+    if trace:
+        out.trace = pd.DataFrame(tr, columns=["sensor_id", "time_s", "z", "f"])
+        out.xtrace = pd.DataFrame(xt, columns=["sensor_id", "time_s", "xz"])
+    return out
 
 
 def rules_only(b: dict[str, SensorModels]) -> dict[str, SensorModels]:
@@ -128,7 +148,7 @@ def build_context(cfg: Config, seed: int) -> SeedContext:
         "edge_hw": run_edge(tb, calibrated["hw"], "hw", "validated", t0, t1),
         "edge_mlp": run_edge(tb, calibrated["mlp"], "mlp", "validated", t0, t1),
         "rules": run_edge(tb, rules_only(bundles), "hw", "validated", t0, t1),
-        "edge_v2": run_edge(tb, fit_v2.bundles, "hw", "validated", t0, t1),
+        "edge_v2": run_edge(tb, fit_v2.bundles, "hw", "validated", t0, t1, trace=True),
     }
     hyd = [s.sensor_id for s in tb.sensors if s.kind != "chlorine"]
     cl = [s.sensor_id for s in tb.sensors if s.kind == "chlorine"]

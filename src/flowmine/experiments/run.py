@@ -45,6 +45,11 @@ EXPERIMENTS = (
     "e9_leak_calib",
     "e10_chlorine",
     "e10_kb_trajectory",
+    "e11_stacked",
+    "e11_calib",
+    "e11_coef",
+    "e11_pareto",
+    "e11_triage",
 )
 
 
@@ -95,6 +100,7 @@ def run_seed(cfg: Config, seed: int) -> dict[str, pd.DataFrame]:
         leak_loc,
         model_validation,
         reconstruction,
+        stacking,
         training,
         twin_value,
     )
@@ -105,6 +111,8 @@ def run_seed(cfg: Config, seed: int) -> dict[str, pd.DataFrame]:
     out: dict[str, pd.DataFrame] = {}
     out["e1_detection"], flags = detection.e1(ctx)
     out["e1_pressure"] = detection.e1_pressure(ctx, flags)
+    e11, _flags11 = stacking.e11(ctx, flags)
+    out.update(e11)
     out["e1_model_bands"] = model_validation.band_table(ctx)
     out["e2_reconstruction"] = reconstruction.e2(ctx)
     out["e3_policies"], out["e3_epsilon"] = comms.e3(ctx)
