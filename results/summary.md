@@ -20,6 +20,7 @@ Configuration `default`, seeds 1, 2, 3, 4, 5; mean ± sample standard deviation 
 - Model-based validation on the pressure sensors (twin residual, conformal band at alpha 0.005): recall 0.48 against 0.61 for the spatial model, bias recall 0.39 against 0.69, false-alarm rate 0.0029 against 0.0397.
 - Leak localisation (E9, sensitivity matrix on the twin's residuals): top-5 share raw 0.34, edge_validated 0.34, hybrid_validated 0.36, clean 0.63; median pipe distance between the first candidate and the leak raw 2534 m, edge_validated 2414 m, hybrid_validated 2368 m, clean 518 m.
 - Chlorine (E10, bulk-only model): kb estimated from laboratory results -0.80 /day (truth -0.50 /day plus wall decay); week-8 MAE at the laboratory points 0.038 mg/L with the estimate, 0.103 with the true kb and no wall term, 0.544 with the coefficients in Net3.inp (no decay), 0.023 with both true coefficients.
+- Stacking (E11) at a 1 % false-alarm budget: F1 0.437 against 0.427 for hybrid v0.1; week-8 false-alarm rate 0.0369 against the budget 0.01 (week 7, in-sample: 0.0100).
 
 ## E1 detection (overall, non-gap faults)
 
@@ -402,6 +403,101 @@ Operating variant chosen on week 7 (edge-validated input, synthetic cases): base
 | 14 | -0.79 ± 0.03 | -0.84 ± 0.00 |
 | 28 | -0.80 ± 0.02 | -0.84 ± 0.00 |
 | 49 | -0.80 ± 0.01 | -0.85 ± 0.01 |
+
+## E11 stacked fusion with a false-alarm budget (test week)
+
+| method | precision | recall | F1 | event recall | delay (min) | false-alarm rate |
+|---|---|---|---|---|---|---|
+| Hybrid v0.1 | 0.470 ± 0.209 | 0.428 ± 0.078 | 0.427 ± 0.103 | 0.650 ± 0.137 | 197.483 ± 138.301 | 0.041 ± 0.029 |
+| Stacked, 0.5 % budget | 0.531 ± 0.216 | 0.372 ± 0.110 | 0.411 ± 0.076 | 0.720 ± 0.097 | 193.218 ± 119.781 | 0.028 ± 0.024 |
+| Stacked, 1 % budget | 0.485 ± 0.200 | 0.433 ± 0.123 | 0.437 ± 0.125 | 0.790 ± 0.119 | 141.965 ± 63.147 | 0.037 ± 0.029 |
+| Stacked, 2 % budget | 0.434 ± 0.163 | 0.512 ± 0.112 | 0.455 ± 0.116 | 0.860 ± 0.096 | 113.818 ± 36.805 | 0.051 ± 0.031 |
+
+### E11 by fault type
+
+| method | fault_type | recall | F1 | delay (min) |
+|---|---|---|---|---|
+| Hybrid v0.1 | stuck | 0.61 ± 0.21 | 0.19 ± 0.16 | 72.33 ± 13.00 |
+| Hybrid v0.1 | spike | 0.50 ± 0.29 | 0.02 ± 0.02 | 0.00 ± 0.00 |
+| Hybrid v0.1 | drift | 0.31 ± 0.09 | 0.28 ± 0.08 | 793.00 ± 321.10 |
+| Hybrid v0.1 | bias | 0.66 ± 0.39 | 0.35 ± 0.28 | 176.67 ± 382.13 |
+| Hybrid v0.1 | noise_burst | 0.31 ± 0.24 | 0.05 ± 0.05 | 26.17 ± 19.49 |
+| Stacked, 0.5 % budget | stuck | 0.37 ± 0.19 | 0.14 ± 0.06 | 84.83 ± 23.02 |
+| Stacked, 0.5 % budget | spike | 0.68 ± 0.14 | 0.04 ± 0.05 | 0.00 ± 0.00 |
+| Stacked, 0.5 % budget | drift | 0.27 ± 0.16 | 0.26 ± 0.10 | 903.00 ± 502.21 |
+| Stacked, 0.5 % budget | bias | 0.60 ± 0.29 | 0.40 ± 0.23 | 140.67 ± 301.67 |
+| Stacked, 0.5 % budget | noise_burst | 0.30 ± 0.21 | 0.09 ± 0.11 | 8.54 ± 10.33 |
+| Stacked, 1 % budget | stuck | 0.59 ± 0.23 | 0.20 ± 0.17 | 62.00 ± 30.29 |
+| Stacked, 1 % budget | spike | 0.72 ± 0.21 | 0.02 ± 0.02 | 0.00 ± 0.00 |
+| Stacked, 1 % budget | drift | 0.30 ± 0.15 | 0.27 ± 0.08 | 712.50 ± 394.51 |
+| Stacked, 1 % budget | bias | 0.65 ± 0.32 | 0.39 ± 0.27 | 134.17 ± 287.14 |
+| Stacked, 1 % budget | noise_burst | 0.36 ± 0.21 | 0.07 ± 0.07 | 21.83 ± 16.23 |
+| Stacked, 2 % budget | stuck | 0.61 ± 0.23 | 0.15 ± 0.11 | 57.17 ± 28.54 |
+| Stacked, 2 % budget | spike | 0.72 ± 0.21 | 0.01 ± 0.01 | 0.00 ± 0.00 |
+| Stacked, 2 % budget | drift | 0.39 ± 0.15 | 0.29 ± 0.09 | 488.00 ± 228.75 |
+| Stacked, 2 % budget | bias | 0.73 ± 0.30 | 0.35 ± 0.24 | 95.00 ± 188.52 |
+| Stacked, 2 % budget | noise_burst | 0.44 ± 0.22 | 0.05 ± 0.04 | 18.67 ± 20.66 |
+
+### E11 budget against realised false-alarm rate
+
+| budget | week-7 false-alarm rate (in-sample) | week-8 false-alarm rate | week-7 recall | week-8 recall | threshold on p |
+|---|---|---|---|---|---|
+| 0.005 | 0.0050 ± 0.0000 | 0.0278 ± 0.0237 | 0.4763 ± 0.1856 | 0.3717 ± 0.1098 | 0.9487 ± 0.0367 |
+| 0.010 | 0.0100 ± 0.0000 | 0.0369 ± 0.0294 | 0.5465 ± 0.1675 | 0.4328 ± 0.1225 | 0.8695 ± 0.0647 |
+| 0.020 | 0.0200 ± 0.0000 | 0.0506 ± 0.0309 | 0.6372 ± 0.1430 | 0.5121 ± 0.1120 | 0.8048 ± 0.0605 |
+
+### E11 coefficients (standardised features)
+
+| feature | standardised coefficient |
+|---|---|
+| edge_reject | 0.38 ± 0.27 |
+| edge_shift | -0.29 ± 0.49 |
+| edge_score | 0.02 ± 0.30 |
+| edge_score_missing | 0.00 ± 0.00 |
+| cross_abs_z | 0.37 ± 0.23 |
+| cross_missing | -0.03 ± 0.46 |
+| cusum_ratio | 0.06 ± 0.33 |
+| cusum_missing | 0.39 ± 0.47 |
+| spatial_ratio | 1.94 ± 1.22 |
+| spatial_missing | 0.49 ± 0.08 |
+| model_ratio | 1.14 ± 1.32 |
+| model_missing | 0.33 ± 0.21 |
+| lab_drift | 0.00 ± 0.00 |
+| kind_pressure | -0.33 ± 0.21 |
+| kind_flow | 0.17 ± 0.37 |
+| kind_level | -0.23 ± 0.33 |
+| kind_chlorine | 0.49 ± 0.08 |
+| maintenance_recent | -1.77 ± 2.69 |
+| intercept | -2.30 ± 0.77 |
+
+### E11 process events (E7 recomputed for the stacked method)
+
+| architecture | process events raised | event samples reconstructed | faults raised as events |
+|---|---|---|---|
+| hybrid | 0.850 ± 0.137 | 0.011 ± 0.010 | 0.537 ± 0.215 |
+| stacked | 0.850 ± 0.137 | 0.085 ± 0.067 | 0.362 ± 0.166 |
+
+## E12 what each side gains from the other
+
+| direction | mechanism | metric | without | with | source |
+|---|---|---|---|---|---|
+| edge → centre | spatial model on edge-validated input instead of raw | F1, hydraulic sensors | 0.480 ± 0.175 | 0.465 ± 0.123 | e12_spatial.csv |
+| edge → centre | spatial model on edge-validated input instead of raw | false-alarm rate, hydraulic sensors | 0.0401 ± 0.0443 | 0.0498 ± 0.0396 | e12_spatial.csv |
+| edge → centre | twin driven by edge-validated input instead of raw | RMSE at unmonitored nodes (m) | 0.92 ± 0.63 | 0.67 ± 0.16 | e6_twin.csv |
+| edge → centre | leak localisation on edge-validated residuals | top-5 share | 0.34 ± 0.19 | 0.34 ± 0.18 | e9_leak.csv |
+| centre → edge | spatial score fused with the station's flags (hybrid v0.1) | bias recall (v0.1 station alone, then fused) | 0.01 ± 0.00 | 0.66 ± 0.39 | e1_detection.csv |
+| centre → edge | spatial score fused with the station's flags (hybrid v0.1) | false-alarm rate (v0.1 station alone, then fused) | 0.0055 ± 0.0010 | 0.0406 ± 0.0295 | e1_detection.csv |
+| centre → edge | cold-start station gets a model trained in the cloud | one-step RMSE at a new station (m) | 2.220 ± 0.320 | 1.705 ± 0.091 | e5_training.csv |
+| centre → edge | cold-start station gets a model trained in the cloud | day-ahead RMSE at a new station (m) | 5.838 ± 1.864 | 24.872 ± 17.610 | e5_training.csv |
+
+## Trade-off table across architectures
+
+| architecture | F1 | false-alarm rate | delay (min) | uplink B/station/day | twin RMSE at unmonitored nodes (m) | 24 h link outage | edge RAM (live heap) |
+|---|---|---|---|---|---|---|---|
+| Edge only (v0.2 station) | 0.248 ± 0.099 | 0.0151 ± 0.0049 | 173 ± 70 | 2878 ± 6 | n/a (no network model) | 2.8 ± 1.3 of 4.8 ± 2.2 fault events flagged during the outage | 25248 B (largest station, v0.2 int8) |
+| Central only (spatial + lab on raw uplink) | 0.393 ± 0.140 | 0.0354 ± 0.0392 | 126 ± 220 | 2820 ± 10 | 0.92 ± 0.63 | 0.0 ± 0.0 of 4.8 ± 2.2 fault events flagged during the outage | not measured (station only packs raw frames) |
+| Hybrid v0.1 (fusion, F1 threshold) | 0.427 ± 0.103 | 0.0406 ± 0.0295 | 197 ± 138 | 2878 ± 6 | 0.64 ± 0.19 | 2.8 ± 1.3 of 4.8 ± 2.2 fault events flagged during the outage | 22080 B (largest station, v0.1) |
+| Hybrid stacked (1 % budget) | 0.437 ± 0.125 | 0.0369 ± 0.0294 | 142 ± 63 | 2878 ± 6 | 0.64 ± 0.19 | 2.8 ± 1.3 of 4.8 ± 2.2 fault events flagged during the outage | 25248 B (largest station, v0.2 int8) |
 
 ## Station footprint (P1.5)
 

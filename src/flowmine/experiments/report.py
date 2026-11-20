@@ -425,12 +425,18 @@ def build(cfg: Config, results: Path) -> tuple[str, str]:
     t_fp = footprint_table(results / "edge_footprint.csv")
     t8 = e8_tables(d)
     t_fps = station_footprint_table(results / "edge_footprint_stations.csv")
+    p3t = phase3_tables(d, results)
     head = (
         f"Configuration `{cfg.name}`, seeds {', '.join(map(str, seeds))}; mean ± sample standard "
         "deviation over seeds; test week only unless stated."
     )
     key = "\n".join(
-        f"- {s}" for s in findings(d) + model_findings(d) + e9_findings(d) + e10_findings(d)
+        f"- {s}"
+        for s in findings(d)
+        + model_findings(d)
+        + e9_findings(d)
+        + e10_findings(d)
+        + phase3_findings(d)
     )
     t10 = e10_tables(d)
     s10 = (
@@ -527,6 +533,26 @@ def build(cfg: Config, results: Path) -> tuple[str, str]:
                 int8_table(d),
                 *s9,
                 *s10,
+                *(
+                    [
+                        "## E11 stacked fusion with a false-alarm budget (test week)",
+                        p3t["e11"],
+                        "### E11 by fault type",
+                        p3t["e11_types"],
+                        "### E11 budget against realised false-alarm rate",
+                        p3t["e11_calib"],
+                        "### E11 coefficients (standardised features)",
+                        p3t["e11_coef"],
+                        "### E11 process events (E7 recomputed for the stacked method)",
+                        p3t["e11_triage"],
+                        "## E12 what each side gains from the other",
+                        p3t["e12"],
+                        "## Trade-off table across architectures",
+                        p3t["tradeoff"],
+                    ]
+                    if p3t
+                    else []
+                ),
                 *(["## Station footprint (P1.5)", t_fps] if t_fps else []),
                 *(["## Edge footprint", t_fp] if t_fp else []),
             ]
@@ -557,6 +583,20 @@ def build(cfg: Config, results: Path) -> tuple[str, str]:
             t_e7,
             *r9,
             *r10,
+            *(
+                [
+                    "**E11 stacked fusion** at false-alarm budgets (test week)",
+                    p3t["e11"],
+                    "**E11 budget against realised false-alarm rate**",
+                    p3t["e11_calib"],
+                    "**E12 what each side gains from the other**",
+                    p3t["e12"],
+                    "**Trade-off table**",
+                    p3t["tradeoff"],
+                ]
+                if p3t
+                else []
+            ),
             *(["**Edge footprint**", t_fp] if t_fp else []),
             *(["**Station footprint (v0.1 and v0.2)**", t_fps] if t_fps else []),
             "![Recall by fault type](results/figures/e1_recall_by_fault.png)",
@@ -568,6 +608,287 @@ def build(cfg: Config, results: Path) -> tuple[str, str]:
         ]
     )
     return summary, readme
+
+
+STACKED = {
+    "hybrid": "Hybrid v0.1",
+    "stacked_005": "Stacked, 0.5 % budget",
+    "stacked_010": "Stacked, 1 % budget",
+    "stacked_020": "Stacked, 2 % budget",
+}
+PARETO_NAMES = {
+    "edge_hw": "Edge v0.1",
+    "edge_v2": "Edge v0.2",
+    "central": "Central (spatial)",
+    "central_model": "Central, twin residual",
+    "hybrid": "Hybrid v0.1",
+    "stacked": "Stacked (1 %)",
+}
+
+
+def _per_seed(df: pd.DataFrame, col: str) -> pd.Series:
+    return df.groupby("seed")[col].mean()
+
+
+def phase3_tables(d: dict[str, pd.DataFrame], results: Path) -> dict[str, str]:
+    """E11 (stacking), E12 (gains in each direction) and the trade-off table."""
+    if "e11_stacked" not in d:
+        return {}
+    s = d["e11_stacked"]
+    t11 = table(
+        s[s.fault_type == "overall"],
+        ["method"],
+        {
+            "precision": "precision",
+            "recall": "recall",
+            "f1": "F1",
+            "event_recall": "event recall",
+            "delay_min": "delay (min)",
+            "false_alarm_rate": "false-alarm rate",
+        },
+        order=list(STACKED),
+        rename=lambda m: STACKED.get(m, m),
+    )
+    t11t = table(
+        s[s.fault_type.isin(["spike", "stuck", "noise_burst", "bias", "drift"])],
+        ["method", "fault_type"],
+        {"recall": "recall", "f1": "F1", "delay_min": "delay (min)"},
+        rename=lambda m: STACKED.get(m, m),
+        digits=2,
+    )
+    t11c = table(
+        d["e11_calib"].assign(budget=d["e11_calib"].budget.map(lambda b: f"{b:.3f}")),
+        ["budget"],
+        {
+            "calib_false_alarm_rate": "week-7 false-alarm rate (in-sample)",
+            "test_false_alarm_rate": "week-8 false-alarm rate",
+            "calib_recall": "week-7 recall",
+            "test_recall": "week-8 recall",
+            "threshold": "threshold on p",
+        },
+        digits=4,
+    )
+    co = d["e11_coef"]
+    t11k = table(co, ["feature"], {"coef": "standardised coefficient"}, digits=2)
+    tri = pd.concat(
+        [d["e7_events"][d["e7_events"].architecture == "hybrid"], d["e11_triage"]],
+        ignore_index=True,
+    )
+    t11e = table(
+        tri,
+        ["architecture"],
+        {
+            "process_events_raised": "process events raised",
+            "event_samples_reconstructed": "event samples reconstructed",
+            "faults_raised_as_events": "faults raised as events",
+        },
+    )
+    # E12: what each side gains from the other.
+    e1 = d["e1_detection"]
+    ov = e1[e1.fault_type == "overall"]
+    bias = e1[e1.fault_type == "bias"]
+    sp = d["e12_spatial"]
+    spo = sp[sp.fault_type == "overall"]
+    e6 = d["e6_twin"]
+    e5 = d["e5_training"]
+    rows: list[tuple[str, str, str, pd.Series, pd.Series, str, int]] = []
+    rows.append(
+        (
+            "edge → centre",
+            "spatial model on edge-validated input instead of raw",
+            "F1, hydraulic sensors",
+            _per_seed(spo[spo.method == "spatial_raw"], "f1"),
+            _per_seed(spo[spo.method == "spatial_validated"], "f1"),
+            "e12_spatial.csv",
+            3,
+        )
+    )
+    rows.append(
+        (
+            "edge → centre",
+            "spatial model on edge-validated input instead of raw",
+            "false-alarm rate, hydraulic sensors",
+            _per_seed(spo[spo.method == "spatial_raw"], "false_alarm_rate"),
+            _per_seed(spo[spo.method == "spatial_validated"], "false_alarm_rate"),
+            "e12_spatial.csv",
+            4,
+        )
+    )
+    rows.append(
+        (
+            "edge → centre",
+            "twin driven by edge-validated input instead of raw",
+            "RMSE at unmonitored nodes (m)",
+            _per_seed(e6[e6.input == "raw"], "rmse_unmonitored_m"),
+            _per_seed(e6[e6.input == "edge_validated"], "rmse_unmonitored_m"),
+            "e6_twin.csv",
+            2,
+        )
+    )
+    if "e9_leak" in d:
+        base, meth = e9_operating(d)
+        lk = d["e9_leak"]
+        lk = lk[(lk.baseline == base) & (lk.method == meth)]
+        ps = e9_per_seed(lk, ["input"])
+        rows.append(
+            (
+                "edge → centre",
+                "leak localisation on edge-validated residuals",
+                "top-5 share",
+                ps[ps.input == "raw"].set_index("seed").top5,
+                ps[ps.input == "edge_validated"].set_index("seed").top5,
+                "e9_leak.csv",
+                2,
+            )
+        )
+    rows.append(
+        (
+            "centre → edge",
+            "spatial score fused with the station's flags (hybrid v0.1)",
+            "bias recall (v0.1 station alone, then fused)",
+            _per_seed(bias[bias.method == "edge_hw"], "recall"),
+            _per_seed(bias[bias.method == "hybrid"], "recall"),
+            "e1_detection.csv",
+            2,
+        )
+    )
+    rows.append(
+        (
+            "centre → edge",
+            "spatial score fused with the station's flags (hybrid v0.1)",
+            "false-alarm rate (v0.1 station alone, then fused)",
+            _per_seed(ov[ov.method == "edge_hw"], "false_alarm_rate"),
+            _per_seed(ov[ov.method == "hybrid"], "false_alarm_rate"),
+            "e1_detection.csv",
+            4,
+        )
+    )
+    cold = e5[e5.cold_start.astype(str).str.lower().isin(["true", "1"])]
+    for col_, name in (("one_step_rmse_m", "one-step"), ("day_ahead_rmse_m", "day-ahead")):
+        rows.append(
+            (
+                "centre → edge",
+                "cold-start station gets a model trained in the cloud",
+                f"{name} RMSE at a new station (m)",
+                _per_seed(cold[cold.paradigm == "local"], col_),
+                _per_seed(cold[cold.paradigm == "centralised"], col_),
+                "e5_training.csv",
+                3,
+            )
+        )
+    lines = [
+        "| direction | mechanism | metric | without | with | source |",
+        "|---|---|---|---|---|---|",
+    ]
+    for dirn, mech, met, a, b, src, dig in rows:
+        lines.append(f"| {dirn} | {mech} | {met} | {pm(a, dig)} | {pm(b, dig)} | {src} |")
+    t12 = "\n".join(lines)
+    # Trade-off table.
+    st = d["e11_stacked"]
+    st_ov = st[(st.fault_type == "overall") & (st.method == "stacked_010")]
+    det = {
+        "edge": ov[ov.method == "edge_v2"],
+        "central": ov[ov.method == "central"],
+        "hybrid": ov[ov.method == "hybrid"],
+        "stacked": st_ov,
+    }
+    pol = d["e3_policies"]
+    up_val = _per_seed(pol[pol.policy == "validated"], "binary_bytes_per_station_day")
+    up_raw = _per_seed(pol[pol.policy == "raw"], "binary_bytes_per_station_day")
+    e4 = d["e4_outage"]
+    e4 = e4[e4.outage_h == 24]
+
+    def outage(arch: str) -> str:
+        g = e4[e4.architecture == arch]
+        return (
+            f"{pm(g.events_flagged_during_outage, 1)} of "
+            f"{pm(g.fault_events_in_window, 1)} fault events flagged during the outage"
+        )
+
+    twin_raw = _per_seed(e6[e6.input == "raw"], "rmse_unmonitored_m")
+    twin_hyb = _per_seed(e6[e6.input == "hybrid_validated"], "rmse_unmonitored_m")
+    heap = {}
+    fps = results / "edge_footprint_stations.csv"
+    if fps.exists():
+        fp = pd.read_csv(fps)
+        for v in ("v0.1", "v0.2 int8"):
+            sub = fp[fp.version == v]
+            if len(sub):
+                heap[v] = f"{int(sub.heap_resident_bytes.max())} B (largest station, {v})"
+    spec = [
+        (
+            "Edge only (v0.2 station)",
+            "edge",
+            pm(up_val, 0),
+            "n/a (no network model)",
+            outage("edge_store_forward"),
+            heap.get("v0.2 int8", "n/a"),
+        ),
+        (
+            "Central only (spatial + lab on raw uplink)",
+            "central",
+            pm(up_raw, 0),
+            pm(twin_raw, 2),
+            outage("centralised_raw"),
+            "not measured (station only packs raw frames)",
+        ),
+        (
+            "Hybrid v0.1 (fusion, F1 threshold)",
+            "hybrid",
+            pm(up_val, 0),
+            pm(twin_hyb, 2),
+            outage("edge_store_forward"),
+            heap.get("v0.1", "n/a"),
+        ),
+        (
+            "Hybrid stacked (1 % budget)",
+            "stacked",
+            pm(up_val, 0),
+            pm(twin_hyb, 2),
+            outage("edge_store_forward"),
+            heap.get("v0.2 int8", "n/a"),
+        ),
+    ]
+    lines = [
+        "| architecture | F1 | false-alarm rate | delay (min) | uplink B/station/day "
+        "| twin RMSE at unmonitored nodes (m) | 24 h link outage | edge RAM (live heap) |",
+        "|---|---|---|---|---|---|---|---|",
+    ]
+    for name, key, up, tw, out, ram in spec:
+        g = det[key]
+        lines.append(
+            f"| {name} | {pm(g.f1)} | {pm(g.false_alarm_rate, 4)} | "
+            f"{pm(g.delay_min, 0)} | {up} | {tw} | {out} | {ram} |"
+        )
+    trade = "\n".join(lines)
+    return {
+        "e11": t11,
+        "e11_types": t11t,
+        "e11_calib": t11c,
+        "e11_coef": t11k,
+        "e11_triage": t11e,
+        "e12": t12,
+        "tradeoff": trade,
+    }
+
+
+def phase3_findings(d: dict[str, pd.DataFrame]) -> list[str]:
+    if "e11_stacked" not in d:
+        return []
+    s = d["e11_stacked"]
+    ov = s[s.fault_type == "overall"]
+
+    def m(method: str, col: str) -> float:
+        return float(ov[ov.method == method][col].mean())
+
+    c = d["e11_calib"]
+    head = c[c.budget == 0.01]
+    return [
+        f"Stacking (E11) at a 1 % false-alarm budget: F1 {m('stacked_010', 'f1'):.3f} against "
+        f"{m('hybrid', 'f1'):.3f} for hybrid v0.1; week-8 false-alarm rate "
+        f"{float(head.test_false_alarm_rate.mean()):.4f} against the budget 0.01 "
+        f"(week 7, in-sample: {float(head.calib_false_alarm_rate.mean()):.4f}).",
+    ]
 
 
 E9_INPUTS = ["raw", "edge_validated", "hybrid_validated", "clean"]

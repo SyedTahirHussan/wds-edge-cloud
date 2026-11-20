@@ -1,0 +1,6 @@
+seed,architecture,event_samples_reconstructed,events_reconstructed_away,faults_raised_as_events,process_events_raised,n_events,n_faults,budget
+1,stacked,0.019096,0,0.466667,0.75,4,15,0.01
+2,stacked,0.106126,0,0.333333,0.75,4,12,0.01
+3,stacked,0.189995,0.25,0.133333,0.75,4,15,0.01
+4,stacked,0.0619736,0,0.307692,1,4,13,0.01
+5,stacked,0.0474834,0,0.571429,1,4,14,0.01

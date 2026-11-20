@@ -50,6 +50,7 @@ EXPERIMENTS = (
     "e11_coef",
     "e11_pareto",
     "e11_triage",
+    "e12_spatial",
 )
 
 
@@ -101,6 +102,7 @@ def run_seed(cfg: Config, seed: int) -> dict[str, pd.DataFrame]:
         model_validation,
         reconstruction,
         stacking,
+        synergy,
         training,
         twin_value,
     )
@@ -113,6 +115,7 @@ def run_seed(cfg: Config, seed: int) -> dict[str, pd.DataFrame]:
     out["e1_pressure"] = detection.e1_pressure(ctx, flags)
     e11, _flags11 = stacking.e11(ctx, flags)
     out.update(e11)
+    out["e12_spatial"] = synergy.e12(ctx, flags)
     out["e1_model_bands"] = model_validation.band_table(ctx)
     out["e2_reconstruction"] = reconstruction.e2(ctx)
     out["e3_policies"], out["e3_epsilon"] = comms.e3(ctx)
