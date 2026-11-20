@@ -186,6 +186,11 @@ class ExperimentConfig:
     outage_start_h: float = 36.0
     day_ahead_origins: int = 7
     workers: int = 5
+    # E9 leak localisation (fixed before any test-week run; see docs/experiments.md)
+    leak_cases: int = 20
+    leak_areas_m2: tuple[float, ...] = (0.0005, 0.001, 0.0015)
+    leak_window_h: tuple[float, float] = (6.0, 12.0)
+    leak_nominal_l_s: float = 10.0
 
 
 @dataclass(frozen=True)

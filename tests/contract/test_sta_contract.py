@@ -23,6 +23,7 @@ def _stream(sta: StaClient, kind: str = "pressure") -> int:
     """A fresh Datastream (unique name) so tests on a persistent server do not interfere."""
     tag = uuid.uuid4().hex[:8]
     sensor_key = {"maintenance": "maintenance_log", "event": "analytics"}.get(kind, kind)
+    sensor_key = {"leak_candidates": "model"}.get(sensor_key, sensor_key)
     sid = sta.ensure("Sensors", mapping.sensor_body(sensor_key))
     op = sta.ensure("ObservedProperties", mapping.observed_property_body(kind))
     tid = sta.create(
@@ -49,6 +50,7 @@ def test_provisioning_is_idempotent_and_maps_epanet(
     assert m1.datastreams == m2.datastreams and m1.things == m2.things
     assert len(list(sta.iterate("Things", {"$top": 50}))) == n_things
     assert load_map(sta).datastreams.items() >= m1.datastreams.items()
+    assert "LEAK-CANDIDATES" in m1.datastreams
     tank = next(s for s in smoke_tb.stations if s.station_class == "tank")
     thing = sta.get(f"Things({m1.things[tank.station_id]})", {"$expand": "Locations,Datastreams"})
     props = thing["properties"]
@@ -119,6 +121,26 @@ def test_maintenance_record_as_json_result(sta: StaClient) -> None:
     sta.post_observations([mapping.observation_body(START, 3600, rec, datastream_id=ds)])
     got = next(iter(sta.observations(ds)))["result"]
     assert got == rec
+
+
+def test_leak_candidates_as_json_result(sta: StaClient) -> None:
+    ds = _stream(sta, "leak_candidates")
+    body = mapping.leak_candidates_body(
+        START,
+        7200,
+        ["123", "125", "121", "120", "119"],
+        [0.91, 0.88, 0.8, 0.7, 0.66],
+        6 * 3600,
+        "angle",
+        datastream_id=ds,
+    )
+    sta.post_observations([body])
+    got = next(iter(sta.observations(ds)))
+    assert got["result"] == body["result"]
+    assert got["parameters"]["method"] == "angle"
+    assert mapping.seconds(START, got["phenomenonTime"]) == 7200
+    info = sta.get(f"Datastreams({ds})")
+    assert info["observationType"].endswith("OM_Observation")
 
 
 def test_gateway_frames_to_observations(

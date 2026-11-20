@@ -5,7 +5,8 @@ Thing whose ``properties`` carry the EPANET element of each of its sensors; meas
 laboratory and simulated values use separate Sensor entities; ``resultQuality``
 carries the edge quality code and ``parameters`` the model version and whether the
 value was reconstructed; laboratory results have ``resultTime`` after
-``phenomenonTime``; the maintenance log is a JSON-result Datastream per Thing.
+``phenomenonTime``; the maintenance log is a JSON-result Datastream per Thing; the
+twin's leak candidates are a JSON-result Datastream on the Central Thing.
 """
 
 from __future__ import annotations
@@ -56,6 +57,11 @@ OBSERVED_PROPERTIES: dict[str, dict[str, str]] = {
         "definition": FLOWMINE + "maintenance",
         "description": "Maintenance log record (type, asset, free-text note)",
     },
+    "leak_candidates": {
+        "name": "leak candidate nodes",
+        "definition": FLOWMINE + "leak-candidates",
+        "description": "Most likely leak nodes from the twin's pressure residuals, ranked",
+    },
     "event": {
         "name": "network event",
         "definition": FLOWMINE + "event",
@@ -71,6 +77,7 @@ UNITS: dict[str, dict[str, str]] = {
     "air_temperature": {"name": "degree Celsius", "symbol": "Cel", "definition": UCUM},
     "maintenance": {"name": "none", "symbol": "", "definition": UCUM},
     "event": {"name": "none", "symbol": "", "definition": UCUM},
+    "leak_candidates": {"name": "none", "symbol": "", "definition": UCUM},
 }
 
 SENSORS: dict[str, dict[str, str]] = {
@@ -150,7 +157,9 @@ def datastream_body(
     op_id: Any,
     props: dict[str, Any],
 ) -> dict[str, Any]:
-    obs_type = OM_OBSERVATION if kind in ("maintenance", "event") else OM_MEASUREMENT
+    obs_type = (
+        OM_OBSERVATION if kind in ("maintenance", "event", "leak_candidates") else OM_MEASUREMENT
+    )
     return {
         "name": name,
         "description": f"{role} {OBSERVED_PROPERTIES[kind]['name']}",
@@ -189,6 +198,35 @@ def observation_body(
         body["parameters"] = params
     if datastream_id is not None:
         body["Datastream"] = {"@iot.id": datastream_id}
+    return body
+
+
+def leak_candidates_result(
+    nodes: list[str], scores: list[float], k: int = 5
+) -> list[dict[str, Any]]:
+    """Result of a LEAK-CANDIDATES Observation: the top-k nodes, best first."""
+    return [
+        {"rank": i + 1, "node": str(n), "score": round(float(s), 4)}
+        for i, (n, s) in enumerate(zip(nodes[:k], scores[:k], strict=True))
+    ]
+
+
+def leak_candidates_body(
+    start: datetime,
+    t_s: float,
+    nodes: list[str],
+    scores: list[float],
+    window_s: int,
+    method: str,
+    datastream_id: Any = None,
+    k: int = 5,
+) -> dict[str, Any]:
+    """phenomenonTime is the end of the residual window; ``parameters`` give its start
+    and the ranking method."""
+    body = observation_body(
+        start, t_s, leak_candidates_result(nodes, scores, k), datastream_id=datastream_id
+    )
+    body["parameters"] = {"window_start": iso(start, t_s - window_s), "method": method}
     return body
 
 

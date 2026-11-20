@@ -9,4 +9,4 @@ events: {surges_calib: 1, surges_test: 1, operations_calib: 1, operations_test: 
 edge: {nn_epochs: 5, hw_grid: [0.05, 0.2], hw_phi_grid: [0.0, 0.8]}
 experiments: {gap_lengths_min: [15, 180, 720], gaps_per_length: 4, epsilons: [0.5, 2.0],
               outage_hours: [6.0], fed_rounds: 3, fed_local_epochs: 1, cold_start_days: 2,
-              unmonitored_nodes: 3, workers: 1}
+              unmonitored_nodes: 3, workers: 1, leak_cases: 4}

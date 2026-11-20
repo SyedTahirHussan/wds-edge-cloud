@@ -56,6 +56,15 @@ def hybrid_frame(ctx: SeedContext) -> pd.DataFrame:
     return m.drop(columns="new")
 
 
+def hybrid_cached(ctx: SeedContext) -> pd.DataFrame:
+    """The hybrid frame, computed once per seed (E6, E9 and the model validator use it)."""
+    if "hybrid_frame" not in ctx.cache:
+        ctx.cache["hybrid_frame"] = hybrid_frame(ctx)
+    out = ctx.cache["hybrid_frame"]
+    assert isinstance(out, pd.DataFrame)
+    return out
+
+
 def e6(ctx: SeedContext) -> pd.DataFrame:
     tb = ctx.tb
     t0, t1 = ctx.periods["test"]
@@ -69,7 +78,7 @@ def e6(ctx: SeedContext) -> pd.DataFrame:
     inputs = {
         "raw": ctx.raw("test"),
         "edge_validated": ctx.edge["edge_hw"].frame,
-        "hybrid_validated": hybrid_frame(ctx),
+        "hybrid_validated": hybrid_cached(ctx),
         "clean": tb.truth.rename(columns={"sensor_id": "stream"}).assign(quality=0),
     }
     truth_nodes = tb.nodes

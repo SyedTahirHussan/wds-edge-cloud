@@ -14,6 +14,7 @@ uses:
     VIRT-<node>                twin: simulated pressure at an unmonitored node
     WEATHER                    hourly air temperature (external source)
     EVENTS                     events raised by the central analytics
+    LEAK-CANDIDATES            twin: top-5 leak candidate nodes with scores (JSON result)
     UPLINK-STATS               byte counters per station and uplink policy (demo)
 """
 
@@ -214,6 +215,7 @@ def provision(
     m.things["Central"] = tid
     stream("EVENTS", "event", "event", tid, "analytics", {})
     stream("UPLINK-STATS", "event", "uplink_statistics", tid, "analytics", {})
+    stream("LEAK-CANDIDATES", "leak_candidates", "leak_candidates", tid, "model", {"k": 5})
     log.info("provisioned %d things, %d datastreams", len(m.things), len(m.datastreams))
     return m
 

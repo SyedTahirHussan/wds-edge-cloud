@@ -428,7 +428,26 @@ def build(cfg: Config, results: Path) -> tuple[str, str]:
         f"Configuration `{cfg.name}`, seeds {', '.join(map(str, seeds))}; mean ± sample standard "
         "deviation over seeds; test week only unless stated."
     )
-    key = "\n".join(f"- {s}" for s in findings(d))
+    key = "\n".join(f"- {s}" for s in findings(d) + e9_findings(d))
+    t9 = e9_tables(d)
+    s9 = (
+        [
+            "## E9 leak localisation (test week)",
+            t9["variant"],
+            t9["main"],
+            "### E9 by leak size (synthetic cases)",
+            t9["size"],
+            "### E9 the testbed's own leak (one case per seed)",
+            t9["own"],
+            "### E9 all variants (test week)",
+            t9["variants"],
+            "### E9 variants on week 7 (edge-validated, used to choose the operating variant)",
+            t9["calib"],
+        ]
+        if t9
+        else []
+    )
+    r9 = ["**E9 leak localisation**. " + t9["variant"], t9["main"]] if t9 else []
     summary = (
         "\n\n".join(
             [
@@ -470,6 +489,7 @@ def build(cfg: Config, results: Path) -> tuple[str, str]:
                 t8["e8x"],
                 "### E8d int8 weights (mean RMSE over sensors, clean samples; physical units)",
                 int8_table(d),
+                *s9,
                 *(["## Station footprint (P1.5)", t_fps] if t_fps else []),
                 *(["## Edge footprint", t_fp] if t_fp else []),
             ]
@@ -497,6 +517,7 @@ def build(cfg: Config, results: Path) -> tuple[str, str]:
             t_e6,
             "**E7 process events**",
             t_e7,
+            *r9,
             *(["**Edge footprint**", t_fp] if t_fp else []),
             *(["**Station footprint (v0.1 and v0.2)**", t_fps] if t_fps else []),
             "![Recall by fault type](results/figures/e1_recall_by_fault.png)",
@@ -508,6 +529,107 @@ def build(cfg: Config, results: Path) -> tuple[str, str]:
         ]
     )
     return summary, readme
+
+
+E9_INPUTS = ["raw", "edge_validated", "hybrid_validated", "clean"]
+
+
+def e9_per_seed(df: pd.DataFrame, by: list[str]) -> pd.DataFrame:
+    """Per seed and group: median rank, median distance, top-5 and top-10 shares."""
+    return (
+        df.groupby(["seed", *by], sort=False)
+        .agg(
+            median_rank=("rank", "median"),
+            mean_rank=("rank", "mean"),
+            median_distance_m=("distance_m", "median"),
+            top5=("top5", "mean"),
+            top10=("top10", "mean"),
+            cases=("case_id", "count"),
+        )
+        .reset_index()
+    )
+
+
+def e9_operating(d: dict[str, pd.DataFrame]) -> tuple[str, str]:
+    """Operating variant (baseline, method) from the week-7 cases only: highest mean
+    top-5 share over seeds, then the lower median distance."""
+    c = e9_per_seed(d["e9_leak_calib"], ["baseline", "method"])
+    g = c.groupby(["baseline", "method"]).agg(
+        top5=("top5", "mean"), dist=("median_distance_m", "mean")
+    )
+    g = g.reset_index().sort_values(
+        ["top5", "dist", "baseline", "method"], ascending=[False, True, True, True]
+    )
+    return str(g.iloc[0].baseline), str(g.iloc[0].method)
+
+
+E9_COLS = {
+    "median_rank": "median rank",
+    "median_distance_m": "median distance (m)",
+    "top5": "top-5 share",
+    "top10": "top-10 share",
+}
+
+
+def e9_tables(d: dict[str, pd.DataFrame]) -> dict[str, str]:
+    out: dict[str, str] = {}
+    if "e9_leak" not in d:
+        return out
+    base, method = e9_operating(d)
+    e9 = d["e9_leak"]
+    op = e9[(e9.baseline == base) & (e9.method == method)]
+    n_cand = int(e9.n_candidates.iloc[0])
+    out["variant"] = (
+        f"Operating variant chosen on week 7 (edge-validated input, synthetic cases): "
+        f"baseline `{base}`, ranking by {method}. {n_cand} candidate junctions; "
+        f"{int(op[op.input == 'raw'].groupby('seed').case_id.count().mean())} cases per seed."
+    )
+    out["main"] = table(e9_per_seed(op, ["input"]), ["input"], E9_COLS, digits=2, order=E9_INPUTS)
+    allv = e9_per_seed(e9, ["input", "baseline", "method"])
+    out["variants"] = table(allv, ["input", "baseline", "method"], E9_COLS, digits=2)
+    out["calib"] = table(
+        e9_per_seed(d["e9_leak_calib"], ["baseline", "method"]),
+        ["baseline", "method"],
+        E9_COLS,
+        digits=2,
+    )
+    size = op[op.kind == "synthetic"].copy()
+    size["leak area (m2)"] = size.area_m2.map(lambda a: f"{a:g}")
+    out["size"] = table(
+        e9_per_seed(size, ["input", "leak area (m2)"]),
+        ["input", "leak area (m2)"],
+        {
+            "median_rank": "median rank",
+            "median_distance_m": "median distance (m)",
+            "top5": "top-5 share",
+        },
+        digits=2,
+    )
+    own = op[op.kind == "testbed"]
+    out["own"] = table(
+        own.rename(columns={"distance_m": "distance_m_"}).assign(distance=own.distance_m),
+        ["input"],
+        {"rank": "rank", "distance": "distance (m)"},
+        digits=1,
+        order=E9_INPUTS,
+    )
+    return out
+
+
+def e9_findings(d: dict[str, pd.DataFrame]) -> list[str]:
+    if "e9_leak" not in d:
+        return []
+    base, method = e9_operating(d)
+    e9 = d["e9_leak"]
+    op = e9[(e9.baseline == base) & (e9.method == method)]
+    s = e9_per_seed(op, ["input"]).groupby("input")[["median_distance_m", "top5"]].mean()
+    return [
+        "Leak localisation (E9, sensitivity matrix on the twin's residuals): top-5 share "
+        + ", ".join(f"{i} {s.top5[i]:.2f}" for i in E9_INPUTS if i in s.index)
+        + "; median distance from the top candidate to the leak "
+        + ", ".join(f"{i} {s.median_distance_m[i]:.0f} m" for i in E9_INPUTS if i in s.index)
+        + "."
+    ]
 
 
 def e8_tables(d: dict[str, pd.DataFrame]) -> dict[str, str]:

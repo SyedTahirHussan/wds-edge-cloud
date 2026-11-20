@@ -17,6 +17,7 @@ Configuration `default`, seeds 1, 2, 3, 4, 5; mean ± sample standard deviation 
 - Cold-start station, one-step RMSE: local 2.220 m, centralised 1.705 m, federated 2.136 m, federated with fine-tuning 2.102 m.
 - Twin state error at unmonitored nodes: raw 0.92 m, edge-validated 0.67 m, hybrid 0.64 m, clean 0.47 m.
 - Process events: share of event samples reconstructed away central_only 0.016, edge_only 0.010, hybrid 0.011; share of sensor faults raised as events central_only 0.52, edge_only 0.42, hybrid 0.54.
+- Leak localisation (E9, sensitivity matrix on the twin's residuals): top-5 share raw 0.34, edge_validated 0.34, hybrid_validated 0.36, clean 0.63; median distance from the top candidate to the leak raw 2534 m, edge_validated 2414 m, hybrid_validated 2368 m, clean 518 m.
 
 ## E1 detection (overall, non-gap faults)
 
@@ -275,6 +276,83 @@ Configuration `default`, seeds 1, 2, 3, 4, 5; mean ± sample standard deviation 
 | cross_mlp | test | 7.6845 ± 2.1928 | 7.6847 ± 2.1812 | 0.0003 ± 0.0033 |
 | forecast_mlp | calib | 0.5799 ± 0.0474 | 0.5804 ± 0.0470 | 0.0008 ± 0.0015 |
 | forecast_mlp | test | 0.6388 ± 0.0631 | 0.6393 ± 0.0633 | 0.0006 ± 0.0012 |
+
+## E9 leak localisation (test week)
+
+Operating variant chosen on week 7 (edge-validated input, synthetic cases): baseline `none`, ranking by angle. 92 candidate junctions; 21 cases per seed.
+
+| input | median rank | median distance (m) | top-5 share | top-10 share |
+|---|---|---|---|---|
+| raw | 16.20 ± 13.59 | 2534.16 ± 2110.80 | 0.34 ± 0.19 | 0.44 ± 0.20 |
+| edge_validated | 15.60 ± 12.74 | 2413.71 ± 2056.17 | 0.34 ± 0.18 | 0.48 ± 0.23 |
+| hybrid_validated | 15.00 ± 13.17 | 2367.69 ± 1994.10 | 0.36 ± 0.18 | 0.49 ± 0.23 |
+| clean | 3.60 ± 0.55 | 517.86 ± 96.15 | 0.63 ± 0.07 | 0.82 ± 0.02 |
+
+### E9 by leak size (synthetic cases)
+
+| input | leak area (m2) | median rank | median distance (m) | top-5 share |
+|---|---|---|---|---|
+| raw | 0.0005 | 17.40 ± 13.39 | 3546.35 ± 2427.07 | 0.29 ± 0.23 |
+| edge_validated | 0.0005 | 20.20 ± 12.11 | 3368.96 ± 2137.80 | 0.26 ± 0.16 |
+| hybrid_validated | 0.0005 | 16.80 ± 13.37 | 3252.52 ± 2124.73 | 0.29 ± 0.17 |
+| clean | 0.0005 | 6.60 ± 2.51 | 1106.12 ± 477.12 | 0.46 ± 0.06 |
+| raw | 0.001 | 19.60 ± 13.05 | 2838.65 ± 3312.15 | 0.29 ± 0.30 |
+| edge_validated | 0.001 | 17.00 ± 13.13 | 2731.67 ± 3366.90 | 0.31 ± 0.31 |
+| hybrid_validated | 0.001 | 17.00 ± 13.13 | 2750.88 ± 3350.99 | 0.31 ± 0.31 |
+| clean | 0.001 | 3.20 ± 1.79 | 444.76 ± 155.13 | 0.69 ± 0.16 |
+| raw | 0.0015 | 15.80 ± 16.13 | 1955.44 ± 1326.12 | 0.47 ± 0.25 |
+| edge_validated | 0.0015 | 15.70 ± 17.49 | 1903.47 ± 1323.52 | 0.47 ± 0.22 |
+| hybrid_validated | 0.0015 | 15.40 ± 17.69 | 1876.80 ± 1333.42 | 0.50 ± 0.26 |
+| clean | 0.0015 | 4.10 ± 2.68 | 774.83 ± 361.80 | 0.73 ± 0.25 |
+
+### E9 the testbed's own leak (one case per seed)
+
+| input | rank | distance (m) |
+|---|---|---|
+| raw | 13.2 ± 10.7 | 3223.7 ± 3840.6 |
+| edge_validated | 12.4 ± 10.8 | 3223.7 ± 3840.6 |
+| hybrid_validated | 10.6 ± 9.9 | 3011.6 ± 3950.7 |
+| clean | 3.0 ± 2.5 | 1121.5 ± 1220.2 |
+
+### E9 all variants (test week)
+
+| input | baseline | method | median rank | median distance (m) | top-5 share | top-10 share |
+|---|---|---|---|---|---|---|
+| raw | none | correlation | 19.00 ± 15.73 | 3327.81 ± 2777.09 | 0.39 ± 0.19 | 0.47 ± 0.28 |
+| raw | none | angle | 16.20 ± 13.59 | 2534.16 ± 2110.80 | 0.34 ± 0.19 | 0.44 ± 0.20 |
+| raw | day1 | correlation | 30.60 ± 12.60 | 4131.57 ± 2266.13 | 0.19 ± 0.09 | 0.24 ± 0.13 |
+| raw | day1 | angle | 26.40 ± 6.23 | 4749.99 ± 1929.27 | 0.20 ± 0.07 | 0.28 ± 0.10 |
+| raw | day3 | correlation | 29.40 ± 11.59 | 5000.30 ± 1573.92 | 0.15 ± 0.05 | 0.25 ± 0.09 |
+| raw | day3 | angle | 25.20 ± 8.38 | 4521.09 ± 1497.36 | 0.19 ± 0.09 | 0.26 ± 0.10 |
+| edge_validated | none | correlation | 18.80 ± 13.95 | 3586.57 ± 2459.86 | 0.32 ± 0.16 | 0.42 ± 0.19 |
+| edge_validated | none | angle | 15.60 ± 12.74 | 2413.71 ± 2056.17 | 0.34 ± 0.18 | 0.48 ± 0.23 |
+| edge_validated | day1 | correlation | 27.80 ± 14.13 | 4218.13 ± 2076.54 | 0.18 ± 0.08 | 0.24 ± 0.10 |
+| edge_validated | day1 | angle | 24.80 ± 9.63 | 4280.28 ± 2062.44 | 0.22 ± 0.10 | 0.28 ± 0.11 |
+| edge_validated | day3 | correlation | 27.80 ± 13.44 | 5229.51 ± 2110.77 | 0.14 ± 0.09 | 0.24 ± 0.09 |
+| edge_validated | day3 | angle | 23.60 ± 10.69 | 4484.82 ± 1060.58 | 0.16 ± 0.12 | 0.24 ± 0.12 |
+| hybrid_validated | none | correlation | 18.20 ± 14.27 | 3110.47 ± 2292.91 | 0.34 ± 0.14 | 0.43 ± 0.18 |
+| hybrid_validated | none | angle | 15.00 ± 13.17 | 2367.69 ± 1994.10 | 0.36 ± 0.18 | 0.49 ± 0.23 |
+| hybrid_validated | day1 | correlation | 25.80 ± 16.38 | 4078.83 ± 2077.65 | 0.20 ± 0.11 | 0.30 ± 0.16 |
+| hybrid_validated | day1 | angle | 19.00 ± 11.58 | 3904.76 ± 2378.66 | 0.25 ± 0.14 | 0.35 ± 0.20 |
+| hybrid_validated | day3 | correlation | 27.80 ± 15.27 | 4376.98 ± 2273.34 | 0.17 ± 0.17 | 0.29 ± 0.17 |
+| hybrid_validated | day3 | angle | 21.80 ± 11.82 | 4200.80 ± 1932.17 | 0.20 ± 0.13 | 0.30 ± 0.19 |
+| clean | none | correlation | 3.20 ± 0.45 | 518.76 ± 113.13 | 0.70 ± 0.07 | 0.82 ± 0.09 |
+| clean | none | angle | 3.60 ± 0.55 | 517.86 ± 96.15 | 0.63 ± 0.07 | 0.82 ± 0.02 |
+| clean | day1 | correlation | 8.40 ± 4.67 | 1316.43 ± 749.61 | 0.47 ± 0.13 | 0.61 ± 0.13 |
+| clean | day1 | angle | 8.20 ± 3.03 | 1043.32 ± 360.71 | 0.42 ± 0.07 | 0.60 ± 0.10 |
+| clean | day3 | correlation | 8.00 ± 4.80 | 1334.72 ± 635.17 | 0.49 ± 0.13 | 0.60 ± 0.17 |
+| clean | day3 | angle | 7.00 ± 2.35 | 1146.41 ± 351.44 | 0.48 ± 0.06 | 0.64 ± 0.10 |
+
+### E9 variants on week 7 (edge-validated, used to choose the operating variant)
+
+| baseline | method | median rank | median distance (m) | top-5 share | top-10 share |
+|---|---|---|---|---|---|
+| none | correlation | 12.60 ± 6.83 | 2812.69 ± 1785.07 | 0.31 ± 0.20 | 0.48 ± 0.19 |
+| none | angle | 13.10 ± 9.17 | 2202.73 ± 1586.82 | 0.37 ± 0.21 | 0.53 ± 0.20 |
+| day1 | correlation | 20.70 ± 5.99 | 3262.30 ± 1136.63 | 0.21 ± 0.08 | 0.35 ± 0.08 |
+| day1 | angle | 21.00 ± 7.59 | 3606.39 ± 1477.03 | 0.21 ± 0.13 | 0.37 ± 0.15 |
+| day3 | correlation | 24.20 ± 4.22 | 3256.23 ± 1308.09 | 0.18 ± 0.08 | 0.28 ± 0.10 |
+| day3 | angle | 27.60 ± 12.01 | 3780.37 ± 1545.23 | 0.17 ± 0.08 | 0.24 ± 0.07 |
 
 ## Station footprint (P1.5)
 

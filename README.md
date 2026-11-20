@@ -144,6 +144,7 @@ Configuration `default`, seeds 1, 2, 3, 4, 5; mean ± sample standard deviation 
 - Cold-start station, one-step RMSE: local 2.220 m, centralised 1.705 m, federated 2.136 m, federated with fine-tuning 2.102 m.
 - Twin state error at unmonitored nodes: raw 0.92 m, edge-validated 0.67 m, hybrid 0.64 m, clean 0.47 m.
 - Process events: share of event samples reconstructed away central_only 0.016, edge_only 0.010, hybrid 0.011; share of sensor faults raised as events central_only 0.52, edge_only 0.42, hybrid 0.54.
+- Leak localisation (E9, sensitivity matrix on the twin's residuals): top-5 share raw 0.34, edge_validated 0.34, hybrid_validated 0.36, clean 0.63; median distance from the top candidate to the leak raw 2534 m, edge_validated 2414 m, hybrid_validated 2368 m, clean 518 m.
 
 **E1 detection** (overall, non-gap faults)
 
@@ -219,6 +220,15 @@ Configuration `default`, seeds 1, 2, 3, 4, 5; mean ± sample standard deviation 
 | edge_only | 0.950 ± 0.112 | 0.010 ± 0.008 | 0.000 ± 0.000 | 0.424 ± 0.100 |
 | central_only | 0.500 ± 0.306 | 0.016 ± 0.017 | 0.000 ± 0.000 | 0.518 ± 0.238 |
 | hybrid | 0.850 ± 0.137 | 0.011 ± 0.010 | 0.000 ± 0.000 | 0.537 ± 0.215 |
+
+**E9 leak localisation**. Operating variant chosen on week 7 (edge-validated input, synthetic cases): baseline `none`, ranking by angle. 92 candidate junctions; 21 cases per seed.
+
+| input | median rank | median distance (m) | top-5 share | top-10 share |
+|---|---|---|---|---|
+| raw | 16.20 ± 13.59 | 2534.16 ± 2110.80 | 0.34 ± 0.19 | 0.44 ± 0.20 |
+| edge_validated | 15.60 ± 12.74 | 2413.71 ± 2056.17 | 0.34 ± 0.18 | 0.48 ± 0.23 |
+| hybrid_validated | 15.00 ± 13.17 | 2367.69 ± 1994.10 | 0.36 ± 0.18 | 0.49 ± 0.23 |
+| clean | 3.60 ± 0.55 | 517.86 ± 96.15 | 0.63 ± 0.07 | 0.82 ± 0.02 |
 
 **Edge footprint**
 

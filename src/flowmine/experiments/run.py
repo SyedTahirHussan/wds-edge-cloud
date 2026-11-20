@@ -1,4 +1,4 @@
-"""Run E1-E13 (plus the maintenance-log and temperature checks) over all seeds.
+"""Run E1-E10 (plus the maintenance-log and temperature checks) over all seeds.
 
 Each seed runs in its own process. The BLAS thread variables are set before the
 workers start (the Makefile also exports them), so every worker runs single-threaded
@@ -39,6 +39,8 @@ EXPERIMENTS = (
     "e8_xmodels",
     "e8_cusum",
     "e8d_int8",
+    "e9_leak",
+    "e9_leak_calib",
 )
 
 
@@ -85,6 +87,7 @@ def run_seed(cfg: Config, seed: int) -> dict[str, pd.DataFrame]:
         context,
         detection,
         edge_v2,
+        leak_loc,
         reconstruction,
         training,
         twin_value,
@@ -105,6 +108,7 @@ def run_seed(cfg: Config, seed: int) -> dict[str, pd.DataFrame]:
     out["x1_maintenance"] = detection.maintenance_ablation(ctx, wn, network.graph(wn))
     out["x2_temperature"] = temperature_check(ctx)
     out.update(edge_v2.e8(ctx))
+    out.update(leak_loc.e9(ctx))
     return out
 
 

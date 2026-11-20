@@ -51,6 +51,7 @@ class SeedContext:
     spatial_val: spatial.SpatialModel
     lab_base: dict[str, tuple[float, float]]
     v2: v2.V2Fit | None = None
+    cache: dict[str, object] = field(default_factory=dict)
 
     @property
     def seed(self) -> int:

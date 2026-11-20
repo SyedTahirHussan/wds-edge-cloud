@@ -13,11 +13,13 @@ import logging
 import queue
 import time
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
+from flowmine.central import leak
 from flowmine.config import Config
 from flowmine.sta import mapping
 from flowmine.sta.client import StaClient, observation_row
@@ -164,6 +166,19 @@ class LiveTwin:
         return t, row, measured
 
 
+def leak_watcher(cfg: Config, sensors: list[BridgeSensor]) -> leak.LeakWatcher:
+    """Watcher over the pressure sensors; the matrix uses the base demands (multiplier 1)."""
+    press = {s.sensor_id: s.element for s in sensors if s.kind == "pressure"}
+    sens = leak.ensure(
+        cfg,
+        sorted(set(press.values())),
+        np.ones(leak.STEPS_PER_DAY),
+        Path("data") / "twin",
+        cfg.experiments.leak_nominal_l_s,
+    )
+    return leak.LeakWatcher(sens, press)
+
+
 def live(
     client: StaClient,
     cfg: Config,
@@ -186,11 +201,26 @@ def live(
     if not mq.start():
         raise RuntimeError(f"MQTT broker {host}:{port} not reachable")
     posted = 0
+    watcher = leak_watcher(cfg, sensors) if "LEAK-CANDIDATES" in m.datastreams else None
 
     def advance(drain: bool) -> None:
         nonlocal posted
         while twin.ready(timeout_s) or (drain and twin.pending()):
             t, row, measured = twin.step()
+            if watcher is not None:
+                res_p = {k: measured[k] - row[f"SIM-{k}"] for k in measured if f"SIM-{k}" in row}
+                hit = watcher.add(t, res_p)
+                if hit is not None:
+                    body = mapping.leak_candidates_body(
+                        start,
+                        t,
+                        hit[0],
+                        hit[1],
+                        watcher.window_s,
+                        watcher.method,
+                        datastream_id=m.datastreams["LEAK-CANDIDATES"],
+                    )
+                    posted += client.post_observations([body])
             sim = pd.DataFrame([row], index=[t])
             res = pd.DataFrame(
                 {
