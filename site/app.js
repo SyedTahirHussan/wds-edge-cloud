@@ -39,8 +39,8 @@ function showTip(html, x, y) {
 const hideTip = () => { tip.hidden = true; };
 
 /* ---------- network ---------- */
-function drawNetwork(net) {
-  const svg = document.getElementById("net");
+function netBase(svg, net) {
+  svg.replaceChildren();
   const xs = [], ys = [];
   net.links.forEach((l) => l.pts.forEach(([x, y]) => { xs.push(x); ys.push(y); }));
   const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
@@ -62,7 +62,12 @@ function drawNetwork(net) {
   net.nodes.forEach((n) => {
     if (n.type === "reservoir") el("rect", { x: X(n.x) - 1.3, y: Y(n.y) - 1.3, width: 2.6, height: 2.6, class: "src" }, svg);
   });
+  return { X, Y, w, minX, maxX };
+}
 
+function drawNetwork(net) {
+  const svg = document.getElementById("net");
+  const { X, Y, w, minX, maxX } = netBase(svg, net);
   const r = Math.max(0.9, 1.25 * (w / 100));
   net.stations.forEach((s) => {
     const g = el("g", { class: `st st-${s.class}`, tabindex: "0", role: "button", "aria-label": `${s.id}: ${s.sensors.join(", ")}` }, svg);
@@ -340,9 +345,9 @@ function memoryTable(rows) {
 }
 
 /* ---------- horizontal bars (uplink, twin) ---------- */
-function hbars(host, rows, { unit, digits, axisTitle }) {
+function hbars(host, rows, { unit, digits, axisTitle, labNarrow = 128 }) {
   const narrow = host.clientWidth < 420;
-  const labW = narrow ? 128 : 172;
+  const labW = narrow ? labNarrow : 172;
   const bh = 26, gap = 10;
   const f = frame(host, 30 + rows.length * (bh + gap) + 6, { t: 30, r: 78, b: 6, l: labW });
   const max = Math.max(...rows.map((r) => r.mean + (r.sd || 0)));
@@ -362,6 +367,135 @@ function hbars(host, rows, { unit, digits, axisTitle }) {
   });
   el("line", { x1: labW, x2: labW, y1: f.m.t - 4, y2: f.H - 2, class: "base" }, f.svg);
   numbers(host, ["", axisTitle], rows.map((r) => [r.label, `${fmt(r.mean, digits)} ± ${fmt(r.sd, digits)}${unit ? " " + unit : ""}`]));
+}
+
+
+/* ---------- Phase 2 ---------- */
+const INPUTS = {
+  raw: { name: "Raw readings", c: "--neutral" },
+  edge_validated: { name: "Validated at the station", c: "--edge" },
+  hybrid_validated: { name: "Hybrid validation", c: "--hybrid" },
+  clean: { name: "Clean, no faults", c: "--neutral-2" },
+};
+const P2 = {
+  edge_hw: { name: "Station (Holt-Winters)", c: "--edge" },
+  central: { name: "Centre, spatial model", c: "--central" },
+  central_model: { name: "Centre, twin residual", c: "--central-2" },
+  hybrid: { name: "Hybrid fusion", c: "--hybrid" },
+};
+
+function leakMap(net, leak, input) {
+  const svg = document.getElementById("leakmap");
+  const { X, Y, w } = netBase(svg, net);
+  const m = leak.map;
+  const u = w / 100;
+  m.sensors.forEach((s) => el("circle", { cx: X(s.x), cy: Y(s.y), r: 0.9 * u, class: "lk-sensor" }, svg));
+  const run = m.inputs[input];
+  const tipAt = (g, html) => {
+    g.addEventListener("mousemove", (e) => showTip(html, e.clientX, e.clientY));
+    g.addEventListener("mouseleave", hideTip);
+    g.addEventListener("focus", () => { const b = g.getBoundingClientRect(); showTip(html, b.right, b.top); });
+    g.addEventListener("blur", hideTip);
+  };
+  [...run.top].reverse().forEach((c, ri) => {
+    const rank = run.top.length - ri;
+    const g = el("g", { class: "lk-cand", tabindex: "0", "aria-label": `Candidate ${rank}: node ${c.node}` }, svg);
+    const rr = (2.4 - 0.3 * (rank - 1)) * u;
+    el("circle", { cx: X(c.x), cy: Y(c.y), r: rr, class: "dot" }, g);
+    const t = el("text", { x: X(c.x), y: Y(c.y) + 0.45 * rr, "text-anchor": "middle", class: "lk-num", "font-size": (1.25 * rr).toFixed(2) }, g);
+    t.textContent = rank;
+    tipAt(g, `<b>Candidate ${rank}: node ${esc(c.node)}</b><br>Score ${fmt(c.score, 3)}<br>${fmt(c.dist_m, 0)} m of pipe from the leak`);
+  });
+  const g = el("g", { class: "lk-true", tabindex: "0", "aria-label": `Leak at node ${m.true_node}` }, svg);
+  const [tx, ty] = m.true_xy;
+  el("circle", { cx: X(tx), cy: Y(ty), r: 2.6 * u, class: "ring" }, g);
+  el("path", { d: `M${X(tx) - 1.3 * u},${Y(ty)}H${X(tx) + 1.3 * u}M${X(tx)},${Y(ty) - 1.3 * u}V${Y(ty) + 1.3 * u}`, class: "cross" }, g);
+  tipAt(g, `<b>Leak at node ${esc(m.true_node)}</b><br>Ranked ${run.rank} of ${leak.n_candidates} with this input`);
+  document.getElementById("leak-cap").textContent =
+    `${INPUTS[input].name}: the leak's node is ranked ${run.rank} of ${leak.n_candidates}; the first candidate is ${fmt(run.distance_m, 0)} m of pipe away.`;
+}
+
+function leakControls(net, leak) {
+  const box = document.getElementById("leak-inputs");
+  let current = "edge_validated";
+  box.innerHTML = leak.inputs.map((k) => `<button type="button" data-k="${k}" aria-pressed="${k === current}">${INPUTS[k].name}</button>`).join("");
+  box.addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    current = b.dataset.k;
+    box.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.k === current)));
+    leakMap(net, leak, current);
+  });
+  const m = leak.map;
+  document.getElementById("leak-case").textContent =
+    `Seed ${m.seed}, a leak of ${fmt(m.area_m2 * 1e4, 0)} cm² opening at node ${m.true_node}, starting ${fmt(m.onset_h, 1)} h after midnight.`;
+  const host = document.getElementById("leakmap-wrap");
+  numbers(host, ["Input", "Rank of the leak's node", "First candidate, m from leak", "Top 5 candidates"],
+    leak.inputs.map((k) => { const r = m.inputs[k]; return [INPUTS[k].name, r.rank, fmt(r.distance_m, 0), r.top.map((c) => esc(c.node)).join(", ")]; }));
+  return () => leakMap(net, leak, current);
+}
+
+function model2Callouts(e1p) {
+  const box = document.getElementById("model-callouts");
+  box.innerHTML = ["central", "central_model"].map((k) => {
+    const o = e1p.overall[k];
+    return `<div style="--c:var(${P2[k].c})"><span class="big">${fmt(o.f1.mean)} <small>F1</small></span><p>${P2[k].name}, pressure sensors. False alarms on ${pct(o.false_alarm_rate.mean, 1)} of clean samples.</p></div>`;
+  }).join("");
+}
+
+const CL_CASES = [
+  ["default (Net3.inp coefficients)", "Net3.inp, no decay", "--neutral"],
+  ["estimated, lab", "Fitted to lab", "--central"],
+  ["estimated, lab + analysers", "Fitted, lab + analysers", "--central-2"],
+  ["true kb, model wall", "True kb, no wall term", "--neutral-2"],
+  ["true kb and wall", "True kb and wall", "--neutral-2"],
+];
+
+function kbChart(host, cl) {
+  const lines = [
+    { k: "lab", name: "Lab results only", c: "--central" },
+    { k: "lab_analyser", name: "Lab and analysers", c: "--central-2" },
+  ];
+  legend(host, [...lines.map((l) => ({ name: l.name, c: l.c, cls: "ln" })), { name: "True bulk kb", c: "--neutral", cls: "dash" }]);
+  const tr = cl.trajectory;
+  const days = [...new Set(tr.map((x) => x.day))].sort((a, b) => a - b);
+  const narrow = host.clientWidth < 420;
+  const f = frame(host, narrow ? 280 : 300, { t: 30, r: 14, b: 34, l: 50 });
+  const vals = tr.flatMap((x) => [x.mean - (x.sd || 0), x.mean + (x.sd || 0)]).concat([cl.true_kb]);
+  const lo = Math.floor((Math.min(...vals) - 0.05) * 10) / 10, hi = Math.ceil((Math.max(...vals) + 0.05) * 10) / 10;
+  const ly = (v) => f.m.t + f.ih - ((v - lo) / (hi - lo)) * f.ih;
+  const lx = (d) => f.m.l + ((d - days[0]) / (days.at(-1) - days[0])) * f.iw;
+  const g = el("g", { class: "grid" }, f.svg);
+  for (let t = lo; t <= hi + 1e-9; t += 0.1) {
+    el("line", { x1: f.m.l, x2: f.m.l + f.iw, y1: ly(t), y2: ly(t) }, g);
+    const tx = el("text", { x: f.m.l - 8, y: ly(t) + 4, "text-anchor": "end" }, f.svg); tx.textContent = fmt(t, 1);
+  }
+  (narrow ? [7, 21, 35, 49] : [7, 14, 21, 28, 35, 42, 49]).filter((d) => d >= days[0] && d <= days.at(-1)).forEach((d) => {
+    const t = el("text", { x: lx(d), y: f.H - 12, "text-anchor": "middle", class: "lab" }, f.svg); t.textContent = "day " + d;
+  });
+  const tt = el("text", { x: f.m.l, y: f.m.t - 12, class: "ttl" }, f.svg);
+  tt.textContent = "Bulk decay coefficient kb (1/day), 14-day window";
+  el("line", { x1: f.m.l, x2: f.m.l + f.iw, y1: ly(cl.true_kb), y2: ly(cl.true_kb), class: "ref-dash" }, f.svg);
+  const nt = el("text", { x: f.m.l + 4, y: ly(cl.true_kb) - 6, class: "lab" }, f.svg);
+  nt.textContent = "true bulk kb " + fmt(cl.true_kb, 1);
+  const data = lines.map((l) => ({ ...l, v: days.map((d) => tr.find((x) => x.variant === l.k && x.day === d)) }));
+  data.forEach((d) => {
+    const pts = d.v.map((x, i) => (x ? `${i ? "L" : "M"}${lx(days[i]).toFixed(1)},${ly(x.mean).toFixed(1)}` : "")).join("");
+    el("path", { d: pts, class: "series-line", stroke: `var(${d.c})` }, f.svg);
+  });
+  const xh = el("line", { class: "xh", y1: f.m.t, y2: f.m.t + f.ih, visibility: "hidden" }, f.svg);
+  const hit = el("rect", { x: f.m.l, y: f.m.t, width: f.iw, height: f.ih, class: "hit" }, f.svg);
+  hit.addEventListener("mousemove", (e) => {
+    const b = f.svg.getBoundingClientRect();
+    const mx = ((e.clientX - b.left) / b.width) * f.W;
+    let gi = 0;
+    days.forEach((d, i) => { if (Math.abs(lx(d) - mx) < Math.abs(lx(days[gi]) - mx)) gi = i; });
+    xh.setAttribute("x1", lx(days[gi])); xh.setAttribute("x2", lx(days[gi])); xh.setAttribute("visibility", "visible");
+    showTip(`<b>Day ${days[gi]}</b>` + data.map((d) => `<div class="row"><span><i style="background:var(${d.c})"></i>${d.name}</span><span>${fmt(d.v[gi].mean)} ± ${fmt(d.v[gi].sd)}</span></div>`).join(""), e.clientX, e.clientY);
+  });
+  hit.addEventListener("mouseleave", () => { hideTip(); xh.setAttribute("visibility", "hidden"); });
+  const shown = days.filter((d) => d % 7 === 0 || d === days[0]);
+  numbers(host, ["Day", ...data.map((d) => d.name)], shown.map((day) => { const i = days.indexOf(day); return [day, ...data.map((d) => `${fmt(d.v[i].mean)} ± ${fmt(d.v[i].sd)}`)]; }));
 }
 
 /* ---------- tables ---------- */
@@ -409,6 +543,15 @@ fetch("data.json").then((r) => r.json()).then((d) => {
   trainTable(d.e5);
   v2Callouts(d.phase1);
   memoryTable(d.phase1.footprint);
+  const p2 = d.phase2;
+  const redrawLeak = leakControls(d.network, p2.leak);
+  model2Callouts(p2.e1_pressure);
+  document.getElementById("kb-true").textContent = fmt(p2.chlorine.true_kb, 1);
+  document.getElementById("kb-est").textContent = fmt(find(p2.chlorine.kb, "case", "estimated, lab").mean, 1);
+  document.querySelectorAll(".n-cand").forEach((n) => (n.textContent = p2.leak.n_candidates));
+  document.querySelectorAll(".n-cases").forEach((n) => (n.textContent = p2.leak.cases_per_seed));
+  const leakRows = (key, digits) => p2.leak.inputs.map((k) => { const v = find(p2.leak.summary[key], "input", k); return { label: INPUTS[k].name, mean: v.mean, sd: v.sd, c: INPUTS[k].c }; });
+  const clRows = CL_CASES.map(([k, label, c]) => { const v = find(p2.chlorine.mae_lab, "case", k); const kb = find(p2.chlorine.kb, "case", k); return { label, mean: v.mean, sd: v.sd, c, extra: `kb ${fmt(kb.mean, 2)} /day` }; });
 
   const uplinkRows = [
     ["raw", "Every raw reading"], ["validated", "Validated readings"], ["summary", "15-minute summaries"], ["delta", "Send-on-delta"],
@@ -426,6 +569,12 @@ fetch("data.json").then((r) => r.json()).then((d) => {
     recallChart(document.getElementById("c-v2"), d.e1, V2);
     conformalChart(document.getElementById("c-conformal"), d.phase1.conformal);
     coverageChart(document.getElementById("c-coverage"), d.phase1.coverage, d.phase1.nominal_coverage);
+    redrawLeak();
+    hbars(document.getElementById("c-leakdist"), leakRows("dist"), { unit: "m", digits: 0, axisTitle: "Median distance, first candidate to leak" });
+    hbars(document.getElementById("c-leaktop5"), leakRows("top5"), { unit: "", digits: 2, axisTitle: "Share of leaks with their node in the top 5" });
+    recallChart(document.getElementById("c-model"), p2.e1_pressure, P2);
+    hbars(document.getElementById("c-clmae"), clRows, { unit: "mg/L", digits: 3, axisTitle: "Chlorine MAE at the lab sampling points, week 8", labNarrow: 156 });
+    kbChart(document.getElementById("c-kb"), p2.chlorine);
   };
   render();
   let t;

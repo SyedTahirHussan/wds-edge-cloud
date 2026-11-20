@@ -682,16 +682,25 @@ def model_tables(d: dict[str, pd.DataFrame]) -> dict[str, str]:
     out["pressure"] = "\n".join(lines)
     b = d["e1_model_bands"]
     per = (
-        b.groupby(["seed", "period"])
-        .agg(rate=("clean_flag_rate", "mean"), q=("q_m", "median"))
+        b.groupby(["seed", "variant", "period"])
+        .agg(
+            rate=("clean_flag_rate", "mean"),
+            q=("q_m", "median"),
+            rec=("calib_fault_recall", "first"),
+            chosen=("chosen", "first"),
+        )
         .reset_index()
     )
     out["bands"] = table(
         per,
-        ["period"],
-        {"rate": "share of clean samples outside the band", "q": "median threshold (m)"},
+        ["variant", "period"],
+        {
+            "rate": "share of clean samples outside the band",
+            "q": "median threshold (m)",
+            "rec": "week-7 fault recall",
+            "chosen": "chosen (share of seeds)",
+        },
         digits=4,
-        order=["calib", "test"],
     )
     return out
 

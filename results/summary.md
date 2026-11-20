@@ -99,10 +99,12 @@ Configuration `default`, seeds 1, 2, 3, 4, 5; mean ± sample standard deviation 
 
 ### Twin-residual band: clean samples outside it
 
-| period | share of clean samples outside the band | median threshold (m) |
-|---|---|---|
-| calib | 0.0042 ± 0.0001 | 3.5069 ± 0.4762 |
-| test | 0.0025 ± 0.0020 | 3.5069 ± 0.4762 |
+| variant | period | share of clean samples outside the band | median threshold (m) | week-7 fault recall | chosen (share of seeds) |
+|---|---|---|---|---|---|
+| common_mode | calib | 0.0042 ± 0.0001 | 2.0468 ± 0.5497 | 0.5722 ± 0.2459 | 1.0000 ± 0.0000 |
+| common_mode | test | 0.0030 ± 0.0028 | 2.0468 ± 0.5497 | 0.5722 ± 0.2459 | 1.0000 ± 0.0000 |
+| plain | calib | 0.0042 ± 0.0001 | 5.0730 ± 0.4261 | 0.1308 ± 0.1178 | 0.0000 ± 0.0000 |
+| plain | test | 0.0020 ± 0.0013 | 5.0730 ± 0.4261 | 0.1308 ± 0.1178 | 0.0000 ± 0.0000 |
 
 ## E2 reconstruction MAE by gap length
 

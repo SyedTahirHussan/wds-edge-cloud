@@ -14,6 +14,7 @@
   --water: #1d5f9a;
   --edge: #2a78d6;
   --central: #eb6834;
+  --central-2: #a8461d;
   --hybrid: #1baf7a;
   --neutral: #8a979e;
   --neutral-2: #4f5d65;
@@ -33,6 +34,7 @@
     --water: #72b2ec;
     --edge: #3987e5;
     --central: #d95926;
+    --central-2: #f2925f;
     --hybrid: #199e70;
     --neutral: #7a8a93;
     --neutral-2: #b5c3ca;
@@ -52,6 +54,7 @@
   --water: #72b2ec;
   --edge: #3987e5;
   --central: #d95926;
+    --central-2: #f2925f;
   --hybrid: #199e70;
   --neutral: #7a8a93;
   --neutral-2: #b5c3ca;
@@ -310,3 +313,30 @@ details.numbers summary { cursor: pointer; color: var(--water); width: max-conte
 @media (max-width: 720px) {
   .tbl { display: block; max-width: 100%; overflow-x: auto; }
 }
+
+/* Phase 2: leak map, input switch, reference lines */
+#leakmap { width: 100%; max-width: 760px; height: auto; display: block; overflow: visible; margin: 0 auto; }
+#leakmap-wrap details.numbers { margin-bottom: 1.2rem; }
+#leakmap .pipe { fill: none; stroke: var(--pipe); stroke-width: var(--sw); stroke-linecap: round; stroke-linejoin: round; }
+#leakmap .pipe.pump { stroke: var(--ink-2); stroke-dasharray: var(--dash); }
+#leakmap .src { fill: var(--paper); stroke: var(--ink-2); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+#leakmap .lk-sensor { fill: var(--paper); stroke: var(--edge); stroke-width: 2; vector-effect: non-scaling-stroke; }
+#leakmap .lk-cand { cursor: pointer; }
+#leakmap .lk-cand .dot { fill: var(--central); stroke: var(--paper); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+#leakmap .lk-cand:focus { outline: none; }
+#leakmap .lk-cand:focus .dot, #leakmap .lk-cand:hover .dot { stroke: var(--ink); stroke-width: 2.5; }
+#leakmap .lk-num { fill: #fff; font-weight: 700; pointer-events: none; }
+#leakmap .lk-true { cursor: pointer; }
+#leakmap .lk-true:focus { outline: none; }
+#leakmap .lk-true .ring { fill: none; stroke: var(--ink); stroke-width: 2.5; vector-effect: non-scaling-stroke; }
+#leakmap .lk-true .cross { stroke: var(--ink); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.legend i.ring { background: none !important; border: 2.5px solid var(--ink); border-radius: 50%; width: 12px; height: 12px; }
+.legend i.hollow { background: var(--paper) !important; border: 2px solid var(--edge); border-radius: 50%; width: 10px; height: 10px; }
+.legend i.disc { border-radius: 50%; width: 12px; height: 12px; }
+.chart .ref-dash { stroke: var(--neutral); stroke-width: 1.5; stroke-dasharray: 6 4; }
+.inputs { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.4rem 0 0.9rem; padding: 0; border: 0; }
+.inputs button { font: inherit; font-size: 0.9rem; padding: 0.3rem 0.75rem; border: 1px solid var(--rule); background: var(--paper); color: var(--ink-2); border-radius: 999px; cursor: pointer; }
+.inputs button[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.inputs button:focus-visible { outline: 2px solid var(--water); outline-offset: 2px; }
+.leakfig { margin: 0; }
+.leakfig figcaption { font-size: 0.92rem; color: var(--ink-2); margin-top: 0.5rem; }

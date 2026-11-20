@@ -309,8 +309,8 @@ def localise(ctx: SeedContext, period: str, inputs: tuple[str, ...]) -> pd.DataF
                         "residual_norm_m": float(np.sqrt(np.nansum(r**2))),
                     }
                     for k in range(5):
-                        row[f"top{k + 1}"] = order[k]
-                        row[f"score{k + 1}"] = float(sc[k])
+                        row[f"cand{k + 1}"] = order[k]
+                        row[f"cand{k + 1}_score"] = float(sc[k])
                     rows.append(row)
     out = pd.DataFrame(rows)
     out["top5"] = (out["rank"] <= 5).astype(int)

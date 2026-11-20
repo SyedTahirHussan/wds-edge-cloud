@@ -35,7 +35,7 @@
     <dl class="facts">
       <div><dt>Network</dt><dd>EPANET Net3, <span id="f-stations">15</span> stations, <span id="f-sensors">25</span> sensors</dd></div>
       <div><dt>Data</dt><dd><span id="f-weeks">8</span> simulated weeks at 5-minute steps</dd></div>
-      <div><dt>Experiments</dt><dd>8, each over <span id="f-seeds">5</span> random seeds</dd></div>
+      <div><dt>Experiments</dt><dd>10, each over <span id="f-seeds">5</span> random seeds</dd></div>
     </dl>
     <p class="actions">
       <a class="btn primary" href="https://github.com/SyedTahirHussan/wds-edge-cloud">Browse the code</a>
@@ -168,6 +168,49 @@
   </article>
 </section>
 
+<section id="phase2" class="results">
+  <h2>Phase 2 in v0.3: the hydraulic model as a diagnostic tool</h2>
+  <p class="section-note">Version 0.3 uses the twin's output three ways: it ranks junctions as leak candidates from the pressure residuals, it checks each pressure sensor against the model, and it fits the chlorine decay coefficient to laboratory results. Same <span class="n-seeds">5</span> seeds; everything is scored on the test week.</p>
+
+  <article class="result" id="r-leak">
+    <h3>With clean data the leak's node is usually near the top of the list; with faulty sensors it often is not</h3>
+    <p>For each of the <span class="n-cand">92</span> junctions, the twin's own network model gives the pressure change that a 10 L/s leak there would cause at the 12 pressure sensors, hour by hour. During a leak, the mean residual over the window 6–12 h after onset is compared with each of these signatures, and the junctions are ranked by the angle between the two vectors, the variant that did best on week-7 test leaks. Each seed has <span class="n-cases">21</span> leaks: the testbed's own, and 20 placed one at a time at random junctions in three sizes.</p>
+    <div id="leakmap-wrap">
+      <div class="inputs" id="leak-inputs" role="group" aria-label="Input to the twin"></div>
+      <ul class="legend">
+        <li><i class="ring"></i>Leak</li>
+        <li><i class="disc" style="background:var(--central)"></i>Candidates 1 to 5 (larger is ranked higher)</li>
+        <li><i class="hollow"></i>Pressure sensor</li>
+      </ul>
+      <figure class="leakfig">
+        <svg id="leakmap" role="img" aria-label="Net3 with the leak and the five best-ranked candidate junctions"></svg>
+        <figcaption><span id="leak-case"></span> <span id="leak-cap"></span></figcaption>
+      </figure>
+    </div>
+    <p>Switch the input to compare. Validation barely closes the gap to the clean input: the faults it leaves in the data (most biases and drifts, see Phase 1) and the meters' noise stay in the residual vector. Which of the two costs more was not separated.</p>
+    <div class="pair">
+      <div class="chart" id="c-leakdist" data-title="Median pipe distance from the first candidate to the leak, by input"></div>
+      <div class="chart" id="c-leaktop5" data-title="Share of leaks with their node among the first five candidates, by input"></div>
+    </div>
+  </article>
+
+  <article class="result" id="r-model">
+    <h3>The twin flags pressure faults with far fewer false alarms than the spatial model</h3>
+    <p>The twin, driven by the validated tank levels and flows, predicts every pressure sensor. Its residual, minus the median residual over all pressure sensors at that time, is checked against a split conformal band set on week-7 clean samples. Removing that shared part matters: a faulty boundary meter moves every residual together, and without the correction the bands were several metres wide (the per-variant thresholds are in <code>results/summary.md</code>). A leak moves the residual as well, so this check alone cannot tell a leak from a sensor fault. Recall below is over the pressure sensors only.</p>
+    <div class="chart" id="c-model" data-title="Share of faulty pressure samples detected, by fault type"></div>
+    <div class="callouts two" id="model-callouts"></div>
+  </article>
+
+  <article class="result" id="r-chlorine">
+    <h3>A fitted decay coefficient beats the true one in a model without wall decay</h3>
+    <p>Net3.inp ships with no reaction coefficients. The testbed's water loses chlorine through bulk decay (kb = <span id="kb-true"></span> per day) and wall decay; the model here has bulk decay only. Each day kb is refitted to the last 14 days of laboratory results reported by then, 24 to 48 hours after sampling. The fit settles near <span id="kb-est"></span> per day because it has to carry the wall decay too. On week 8 the fitted value gives a smaller error at the sampling points than the true kb in the same model; only the model with both true coefficients does better. Adding the analysers to the fit changes little.</p>
+    <div class="pair">
+      <div class="chart" id="c-clmae" data-title="Chlorine mean absolute error at the laboratory sampling points, week 8"></div>
+      <div class="chart" id="c-kb" data-title="Estimated bulk decay coefficient over the first seven weeks"></div>
+    </div>
+  </article>
+</section>
+
 <section class="demo">
   <h2>The live demo</h2>
   <p>One process per station, a gateway, FROST-Server, the central analytics loop and the live twin, replaying two test days at 1,200 times real time. The dashboard reads only from SensorThings.</p>
@@ -199,6 +242,8 @@ make frost-down</code></pre><button class="copy" type="button">Copy</button></di
     <li>The edge code has not run on an ESP32. Timings come from CPython and the MicroPython Unix port.</li>
     <li>The hybrid's false-alarm rate is about seven times the station's, and it varies widely between seeds.</li>
     <li>About half of the sensor faults are still raised as network events by the triage.</li>
+    <li>The leak tests add synthetic leaks to the measurements by superposition, so the stations' own reaction to those leaks is not simulated. The twin's single demand multiplier limits localisation even with clean data.</li>
+    <li>The chlorine model is bulk decay only, run on the twin's demand model, with simulated laboratory noise and no temperature dependence.</li>
     <li>No authentication or TLS on MQTT or HTTP.</li>
   </ul>
   <p>The full list is in <a href="https://github.com/SyedTahirHussan/wds-edge-cloud/blob/main/docs/limitations.md">docs/limitations.md</a>.</p>
@@ -207,6 +252,7 @@ make frost-down</code></pre><button class="copy" type="button">Copy</button></di
 <section class="refs">
   <h2>Built on</h2>
   <ol>
+    <li>Pérez et al. (2011). Methodology for leakage isolation using pressure sensitivity analysis in water distribution networks. <i>Control Engineering Practice</i> 19(10). <a href="https://doi.org/10.1016/j.conengprac.2011.06.004">doi</a></li>
     <li>Quevedo et al. (2010). Validation and reconstruction of flow meter data in the Barcelona water distribution network. <i>Control Engineering Practice</i> 18(6). <a href="https://doi.org/10.1016/j.conengprac.2010.03.003">doi</a></li>
     <li>Cugueró-Escofet et al. (2016). A methodology and a software tool for sensor data validation/reconstruction: application to the Catalonia regional water network. <i>Control Engineering Practice</i> 49. <a href="https://doi.org/10.1016/j.conengprac.2015.11.005">doi</a></li>
     <li>Pérez et al. (2022). Chlorine concentration modelling and supervision in water distribution systems. <i>Sensors</i> 22(15). <a href="https://doi.org/10.3390/s22155578">doi</a></li>
@@ -215,7 +261,7 @@ make frost-down</code></pre><button class="copy" type="button">Copy</button></di
     <li>Klise et al. (2017). WNTR. <i>Environmental Modelling &amp; Software</i> 95. <a href="https://doi.org/10.1016/j.envsoft.2017.06.022">doi</a></li>
     <li>OGC SensorThings API Part 1: Sensing, version 1.1. <a href="https://doi.org/10.62973/18-088">doi</a></li>
   </ol>
-  <p>All sixteen references, each checked against Crossref or arXiv, are in the <a href="https://github.com/SyedTahirHussan/wds-edge-cloud#references">README</a>.</p>
+  <p>All references, each checked against Crossref, arXiv or the publisher's page, are in the <a href="https://github.com/SyedTahirHussan/wds-edge-cloud#references">README</a>.</p>
 </section>
 
 </main>

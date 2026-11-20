@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import networkx as nx
 import numpy as np
 import pandas as pd
 
@@ -72,6 +73,100 @@ def net_geometry(cfg) -> dict:
         for s in stations
     ]
     return {"links": links, "nodes": nodes, "stations": st, "n_sensors": len(sensors)}
+
+
+def e9_operating(d: dict[str, pd.DataFrame]) -> tuple[str, str]:
+    """Same rule as the report: best week-7 top-5 share, then median distance."""
+    from flowmine.experiments.report import e9_operating as op
+
+    return op(d)
+
+
+def phase2_data(cfg, d: dict[str, pd.DataFrame]) -> dict:
+    wn = network.load_network(cfg.network.inp)
+    xy = network.coordinates(wn)
+    g = network.graph(wn)
+    base, method = e9_operating(d)
+    e9 = d["e9_leak"]
+    op = e9[(e9.baseline == base) & (e9.method == method)]
+    inputs = ["raw", "edge_validated", "hybrid_validated", "clean"]
+    per_seed = (
+        op.groupby(["seed", "input"])
+        .agg(dist=("distance_m", "median"), top5=("top5", "mean"), rank=("rank", "median"))
+        .reset_index()
+    )
+    summary = {k: seed_stats(per_seed, ["input"], k) for k in ("dist", "top5", "rank")}
+    # Map case: seed 1, synthetic, the case with the median edge-validated rank.
+    s1 = op[(op.seed == cfg.seeds[0]) & (op.kind == "synthetic") & (op.input == "edge_validated")]
+    s1 = s1.sort_values(["rank", "case_id"]).reset_index(drop=True)
+    case_id = int(s1.iloc[(len(s1) - 1) // 2].case_id)
+    case = op[(op.seed == cfg.seeds[0]) & (op.case_id == case_id)]
+    true_node = str(case.true_node.iloc[0])
+    dist_true = nx.single_source_dijkstra_path_length(g, true_node, weight="weight")
+    pressure = sorted({s.element for s in layout(wn, g, cfg)[0] if s.kind == "pressure"})
+    map_case = {
+        "seed": int(cfg.seeds[0]),
+        "case_id": case_id,
+        "true_node": true_node,
+        "true_xy": [r(xy[true_node][0], 1), r(xy[true_node][1], 1)],
+        "area_m2": r(float(case.area_m2.iloc[0]), 5),
+        "onset_h": r((int(case.onset_s.iloc[0]) % 86400) / 3600, 2),
+        "sensors": [{"node": n, "x": r(xy[n][0], 1), "y": r(xy[n][1], 1)} for n in pressure],
+        "inputs": {
+            str(row["input"]): {
+                "rank": int(row["rank"]),
+                "distance_m": r(float(row["distance_m"]), 0),
+                "top": [
+                    {
+                        "node": str(row[f"cand{k}"]),
+                        "score": r(float(row[f"cand{k}_score"]), 3),
+                        "x": r(xy[str(row[f"cand{k}"])][0], 1),
+                        "y": r(xy[str(row[f"cand{k}"])][1], 1),
+                        "dist_m": r(float(dist_true[str(row[f"cand{k}"])]), 0),
+                    }
+                    for k in range(1, 6)
+                ],
+            }
+            for _, row in case.iterrows()
+        },
+    }
+    p = d["e1_pressure"]
+    faults = ["spike", "stuck", "noise_burst", "bias", "drift"]
+    pov = p[p.fault_type == "overall"]
+    e1p = {
+        "faults": faults,
+        "recall": seed_stats(p[p.fault_type.isin(faults)], ["method", "fault_type"], "recall"),
+        "overall": {
+            m: {
+                k: next(x for x in seed_stats(pov, ["method"], k) if x["method"] == m)
+                for k in ("f1", "false_alarm_rate", "recall")
+            }
+            for m in sorted(pov.method.unique())
+        },
+    }
+    c = d["e10_chlorine"]
+    tr = d["e10_kb_trajectory"]
+    return {
+        "leak": {
+            "baseline": base,
+            "method": method,
+            "inputs": inputs,
+            "n_candidates": int(e9.n_candidates.iloc[0]),
+            "cases_per_seed": int(op[op.input == "raw"].groupby("seed").case_id.count().iloc[0]),
+            "summary": summary,
+            "map": map_case,
+        },
+        "e1_pressure": e1p,
+        "chlorine": {
+            "mae_lab": seed_stats(c, ["case"], "mae_lab_points_mg_l"),
+            "mae_analyser": seed_stats(c, ["case"], "mae_analyser_nodes_mg_l"),
+            "kb": seed_stats(c, ["case"], "kb_per_day"),
+            "trajectory": seed_stats(tr, ["variant", "day"], "kb_per_day"),
+            "true_kb": cfg.quality.bulk_coeff_per_day,
+            "true_wall": cfg.quality.wall_coeff_m_per_day,
+            "test_start_day": cfg.network.train_days + cfg.network.calib_days,
+        },
+    }
 
 
 def main() -> None:
@@ -147,6 +242,8 @@ def main() -> None:
             for r in f.to_dict("records")
         ]
 
+    phase2 = phase2_data(cfg, d)
+
     data = {
         "seeds": cfg.seeds,
         "weeks": (cfg.network.train_days + cfg.network.calib_days + cfg.network.test_days) // 7,
@@ -161,6 +258,7 @@ def main() -> None:
         "e5": {"cold_one_step": e5_cold, "cold_day_ahead": e5_day},
         "e6": {"unmonitored": e6_unmon},
         "phase1": phase1,
+        "phase2": phase2,
     }
     OUT.write_text(json.dumps(data, separators=(",", ":")) + "\n")
     print(f"wrote {OUT.relative_to(ROOT)} ({OUT.stat().st_size // 1024} KB)")
