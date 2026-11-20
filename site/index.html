@@ -35,7 +35,7 @@
     <dl class="facts">
       <div><dt>Network</dt><dd>EPANET Net3, <span id="f-stations">15</span> stations, <span id="f-sensors">25</span> sensors</dd></div>
       <div><dt>Data</dt><dd><span id="f-weeks">8</span> simulated weeks at 5-minute steps</dd></div>
-      <div><dt>Experiments</dt><dd>7, each over <span id="f-seeds">5</span> random seeds</dd></div>
+      <div><dt>Experiments</dt><dd>8, each over <span id="f-seeds">5</span> random seeds</dd></div>
     </dl>
     <p class="actions">
       <a class="btn primary" href="https://github.com/SyedTahirHussan/wds-edge-cloud">Browse the code</a>
@@ -135,6 +135,37 @@
       <table class="tbl" id="t-train"></table>
     </article>
   </div>
+</section>
+
+<section id="phase1" class="results">
+  <h2>Phase 1 in v0.2: validation at the station</h2>
+  <p class="section-note">Version 0.2 adds three things to the station, all fitted or calibrated in the cloud on weeks 1 to 7 and shipped in the model package: split conformal thresholds for the forecast-residual test, a CUSUM on the standardised residuals for slow drift, and a model that predicts each sensor from the other sensor at the same station. Same <span class="n-seeds">5</span> seeds, same test week as above.</p>
+
+  <article class="result" id="r-v2">
+    <h3>The v0.2 station finds some biases and drifts, and still misses most</h3>
+    <p>The cross-sensor model is what moves bias and drift recall. At a pump station flow and discharge pressure are tied by the pump; at a chlorine logger pressure says little about chlorine, and the model's error there is about as large as the injected bias. The drift CUSUM adds false alarms without adding detections on these seeds. The ablation table in <code>results/summary.md</code> separates the three parts.</p>
+    <div class="chart" id="c-v2" data-title="Share of faulty samples detected by the station, v0.1 against v0.2"></div>
+    <div class="callouts two" id="v2-callouts"></div>
+  </article>
+
+  <div class="pair">
+    <article class="result" id="r-conformal">
+      <h3>Conformal thresholds keep the false-alarm rate near the level asked for</h3>
+      <p>Share of clean test-week samples rejected by the residual test, against the level the thresholds were calibrated for on week 7. One table per sensor stays close to the identity line. Splitting the day into four buckets leaves too few calibration samples per bucket for the 15-minute sensors, so their thresholds become infinite and the test goes quiet.</p>
+      <div class="chart" id="c-conformal" data-title="Nominal against empirical rejection rate on clean samples"></div>
+    </article>
+    <article class="result" id="r-coverage">
+      <h3>Reconstruction intervals cover less than they promise</h3>
+      <p>Each reconstructed value gets an interval calibrated on week-7 gaps for 90 % coverage. On test-week gaps the intervals cover less, because samples within a gap are correlated and a week holds few gaps of each length.</p>
+      <div class="chart" id="c-coverage" data-title="Share of gap samples inside their interval, by gap length"></div>
+    </article>
+  </div>
+
+  <article class="result" id="r-memory">
+    <h3>The v0.2 station fits easily in an ESP32's memory</h3>
+    <p>Live heap of the station code under the MicroPython Unix port on a laptop, after one day of samples (v0.2 with its cross-sensor weights stored as int8), against the 520 KB of SRAM in Espressif's ESP32 datasheet (version 5.3). This compares two numbers; nothing here ran on an ESP32, and MicroPython there gets only part of that SRAM.</p>
+    <div class="tbl-scroll"><table class="tbl" id="t-memory"></table></div>
+  </article>
 </section>
 
 <section class="demo">

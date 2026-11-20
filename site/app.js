@@ -133,7 +133,8 @@ function roundedRight(x, y, w, h, r) {
 }
 
 /* ---------- E1: recall by fault type ---------- */
-function recallChart(host, e1) {
+function recallChart(host, e1, series = SERIES) {
+  const SERIES = series;
   const keys = Object.keys(SERIES);
   legend(host, keys.map((k) => ({ name: SERIES[k].name, c: SERIES[k].c })));
   const narrow = host.clientWidth < 560;
@@ -228,6 +229,116 @@ function gapChart(host, e2) {
   numbers(host, ["Gap", ...data.map((d) => d.name)], gaps.map((g, i) => [gl(g), ...data.map((d) => `${fmt(d.v[i].mean)} ± ${fmt(d.v[i].sd)} m`)]));
 }
 
+/* ---------- Phase 1 (v0.2 station) ---------- */
+const V2 = {
+  edge_hw: { name: "Station v0.1", c: "--neutral" },
+  edge_v2: { name: "Station v0.2", c: "--edge" },
+};
+
+function v2Callouts(p) {
+  const box = document.getElementById("v2-callouts");
+  box.innerHTML = Object.keys(V2).map((k) => {
+    const o = p.v1_v2[k];
+    return `<div style="--c:var(${V2[k].c})"><span class="big">${fmt(o.f1.mean)} <small>F1</small></span><p>${V2[k].name}. False alarms on ${pct(o.false_alarm_rate.mean, 1)} of clean samples.</p></div>`;
+  }).join("");
+}
+
+// Dot plot on log-log axes with the identity line: nominal level against empirical rate.
+function conformalChart(host, rows) {
+  const series = [
+    { b: 1, name: "One threshold per sensor", c: "--edge" },
+    { b: 4, name: "Four time-of-day buckets", c: "--neutral" },
+  ];
+  legend(host, series.map((s) => ({ name: s.name, c: s.c })));
+  const narrow = host.clientWidth < 420;
+  const f = frame(host, narrow ? 280 : 300, { t: 30, r: 14, b: 40, l: 54 });
+  const lo = 0.0003, hi = 0.02;
+  const L = (v) => (Math.log(Math.max(v, lo)) - Math.log(lo)) / (Math.log(hi) - Math.log(lo));
+  const X = (v) => f.m.l + L(v) * f.iw, Y = (v) => f.m.t + f.ih - L(v) * f.ih;
+  const ticks = [0.001, 0.005, 0.01];
+  const g = el("g", { class: "grid" }, f.svg);
+  ticks.forEach((t) => {
+    el("line", { x1: f.m.l, x2: f.m.l + f.iw, y1: Y(t), y2: Y(t) }, g);
+    const ty = el("text", { x: f.m.l - 8, y: Y(t) + 4, "text-anchor": "end" }, f.svg); ty.textContent = pct(t, 1);
+    const tx = el("text", { x: X(t), y: f.H - 22, "text-anchor": "middle", class: "lab" }, f.svg); tx.textContent = pct(t, 1);
+  });
+  const xt = el("text", { x: f.m.l + f.iw / 2, y: f.H - 4, "text-anchor": "middle", class: "lab" }, f.svg);
+  xt.textContent = "Nominal level (calibrated on week 7)";
+  const tt = el("text", { x: f.m.l, y: f.m.t - 12, class: "ttl" }, f.svg);
+  tt.textContent = "Rejected clean samples, test week (log scale)";
+  el("line", { x1: X(lo), y1: Y(lo), x2: X(hi), y2: Y(hi), class: "xh" }, f.svg);
+  el("line", { x1: f.m.l, x2: f.m.l + f.iw, y1: f.m.t + f.ih, y2: f.m.t + f.ih, class: "base" }, f.svg);
+  const alphas = [...new Set(rows.map((r) => r.alpha))].sort((a, b) => a - b);
+  series.forEach((s, si) => {
+    rows.filter((r) => r.buckets === s.b).forEach((r) => {
+      const dx = (si - 0.5) * 8;
+      const cx = X(r.alpha) + dx, cy = Y(r.mean);
+      if (r.sd) el("line", { x1: cx, x2: cx, y1: Y(r.mean + r.sd), y2: Y(Math.max(r.mean - r.sd, lo)), class: "err" }, f.svg);
+      const c = el("circle", { cx, cy, r: 6, fill: `var(${s.c})`, stroke: "var(--paper)", "stroke-width": 2 }, f.svg);
+      const html = `<b>${s.name}</b><br>Nominal ${pct(r.alpha, 1)}: rejected ${pct(r.mean, 2)} ± ${pct(r.sd, 2)}${r.mean === 0 ? "<br>(no finite threshold for most 15-minute sensors)" : ""}`;
+      c.addEventListener("mousemove", (e) => showTip(html, e.clientX, e.clientY));
+      c.addEventListener("mouseleave", hideTip);
+    });
+  });
+  numbers(host, ["Nominal level", ...series.map((s) => s.name)], alphas.map((a) => [pct(a, 1), ...series.map((s) => { const r = rows.find((x) => x.alpha === a && x.buckets === s.b); return `${pct(r.mean, 2)} ± ${pct(r.sd, 2)}`; })]));
+}
+
+function coverageChart(host, rows, nominal) {
+  const lines = [
+    { k: "holt_winters", name: "Station forecast", c: "--edge" },
+    { k: "spatial", name: "Neighbouring sensors", c: "--central" },
+    { k: "hybrid_width", name: "Narrower interval chosen", c: "--hybrid" },
+  ];
+  legend(host, lines.map((l) => ({ name: l.name, c: l.c, cls: "ln" })));
+  const gaps = [...new Set(rows.map((x) => x.gap_min))].sort((a, b) => a - b);
+  const narrow = host.clientWidth < 420;
+  const f = frame(host, narrow ? 280 : 300, { t: 30, r: 14, b: 34, l: 44 });
+  const lo = 0.6;
+  const ly = (v) => f.m.t + f.ih - ((v - lo) / (1 - lo)) * f.ih;
+  const g = el("g", { class: "grid" }, f.svg);
+  [0.6, 0.7, 0.8, 0.9, 1].forEach((t) => {
+    if (t > lo) el("line", { x1: f.m.l, x2: f.m.l + f.iw, y1: ly(t), y2: ly(t) }, g);
+    const tx = el("text", { x: f.m.l - 8, y: ly(t) + 4, "text-anchor": "end" }, f.svg); tx.textContent = pct(t);
+  });
+  el("line", { x1: f.m.l, x2: f.m.l + f.iw, y1: f.m.t + f.ih, y2: f.m.t + f.ih, class: "base" }, f.svg);
+  const tt = el("text", { x: f.m.l, y: f.m.t - 12, class: "ttl" }, f.svg);
+  tt.textContent = "Coverage of the intervals, test-week gaps";
+  el("line", { x1: f.m.l, x2: f.m.l + f.iw, y1: ly(nominal), y2: ly(nominal), class: "xh" }, f.svg);
+  const nt = el("text", { x: f.m.l + 4, y: ly(nominal) - 6, class: "lab" }, f.svg);
+  nt.textContent = "nominal " + pct(nominal);
+  const lx = (gm) => f.m.l + 10 + ((Math.log(gm) - Math.log(gaps[0])) / (Math.log(gaps.at(-1)) - Math.log(gaps[0]))) * (f.iw - 20);
+  const gl = (gm) => (gm < 60 ? gm + " min" : gm / 60 + " h");
+  gaps.forEach((gm) => { const t = el("text", { x: lx(gm), y: f.H - 10, "text-anchor": "middle", class: "lab" }, f.svg); t.textContent = gl(gm); });
+  const data = lines.map((l) => ({ ...l, v: gaps.map((gm) => rows.find((x) => x.method === l.k && x.gap_min === gm)) }));
+  data.forEach((d) => {
+    const pts = d.v.map((x, i) => `${i ? "L" : "M"}${lx(gaps[i]).toFixed(1)},${ly(Math.max(x.mean, lo)).toFixed(1)}`).join("");
+    el("path", { d: pts, class: "series-line", stroke: `var(${d.c})` }, f.svg);
+    d.v.forEach((x, i) => el("circle", { cx: lx(gaps[i]), cy: ly(Math.max(x.mean, lo)), r: 4, fill: `var(${d.c})`, stroke: "var(--paper)", "stroke-width": 2 }, f.svg));
+  });
+  const xh = el("line", { class: "xh", y1: f.m.t, y2: f.m.t + f.ih, visibility: "hidden" }, f.svg);
+  const hit = el("rect", { x: f.m.l, y: f.m.t, width: f.iw, height: f.ih, class: "hit" }, f.svg);
+  hit.addEventListener("mousemove", (e) => {
+    const b = f.svg.getBoundingClientRect();
+    const mx = ((e.clientX - b.left) / b.width) * f.W;
+    let gi = 0;
+    gaps.forEach((gm, i) => { if (Math.abs(lx(gm) - mx) < Math.abs(lx(gaps[gi]) - mx)) gi = i; });
+    xh.setAttribute("x1", lx(gaps[gi])); xh.setAttribute("x2", lx(gaps[gi])); xh.setAttribute("visibility", "visible");
+    showTip(`<b>Gap of ${gl(gaps[gi])}</b>` + data.map((d) => `<div class="row"><span><i style="background:var(${d.c})"></i>${d.name}</span><span>${pct(d.v[gi].mean)} ± ${pct(d.v[gi].sd)}</span></div>`).join(""), e.clientX, e.clientY);
+  });
+  hit.addEventListener("mouseleave", () => { hideTip(); xh.setAttribute("visibility", "hidden"); });
+  numbers(host, ["Gap", ...data.map((d) => d.name)], gaps.map((gm, i) => [gl(gm), ...data.map((d) => `${pct(d.v[i].mean)} ± ${pct(d.v[i].sd)}`)]));
+}
+
+function memoryTable(rows) {
+  const t = document.getElementById("t-memory");
+  if (!rows) { t.closest("article").hidden = true; return; }
+  const kind = { pump: "pump station", tank: "tank station", logger: "logger" };
+  const sram = 520 * 1024;
+  t.innerHTML = `<thead><tr><th scope="col">Station</th><th scope="col">Version</th><th scope="col">Live heap</th><th scope="col">Share of 520 KB</th><th scope="col">Model package</th></tr></thead><tbody>${rows
+    .filter((r) => r.version !== "v0.2 float32")
+    .map((r) => `<tr><th scope="row">${esc(r.station)} (${kind[r.cls] || r.cls})</th><td>${esc(r.version === "v0.2 int8" ? "v0.2" : r.version)}</td><td>${fmt(r.heap / 1024, 1)} KB</td><td>${pct(r.heap / sram, 1)}</td><td>${fmt(r.package / 1024, 1)} KB</td></tr>`).join("")}</tbody>`;
+}
+
 /* ---------- horizontal bars (uplink, twin) ---------- */
 function hbars(host, rows, { unit, digits, axisTitle }) {
   const narrow = host.clientWidth < 420;
@@ -296,6 +407,8 @@ fetch("data.json").then((r) => r.json()).then((d) => {
   detectCallouts(d.e1);
   outageTable(d.e4);
   trainTable(d.e5);
+  v2Callouts(d.phase1);
+  memoryTable(d.phase1.footprint);
 
   const uplinkRows = [
     ["raw", "Every raw reading"], ["validated", "Validated readings"], ["summary", "15-minute summaries"], ["delta", "Send-on-delta"],
@@ -310,6 +423,9 @@ fetch("data.json").then((r) => r.json()).then((d) => {
     gapChart(document.getElementById("c-gap"), d.e2);
     hbars(document.getElementById("c-uplink"), uplinkRows, { unit: "B", digits: 0, axisTitle: "Binary bytes per station per day" });
     hbars(document.getElementById("c-twin"), twinRows, { unit: "m", digits: 2, axisTitle: "Pressure RMSE at unmonitored nodes" });
+    recallChart(document.getElementById("c-v2"), d.e1, V2);
+    conformalChart(document.getElementById("c-conformal"), d.phase1.conformal);
+    coverageChart(document.getElementById("c-coverage"), d.phase1.coverage, d.phase1.nominal_coverage);
   };
   render();
   let t;

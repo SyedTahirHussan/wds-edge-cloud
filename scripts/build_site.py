@@ -115,6 +115,38 @@ def main() -> None:
         .reset_index()
     )
 
+    e8a = d["e8a_conformal"]
+    e8a_rows = seed_stats(e8a[e8a.period == "test"], ["buckets", "alpha"], "empirical_rate")
+    e8b = d["e8b_intervals"]
+    e8b_cov = seed_stats(e8b, ["method", "gap_min"], "coverage")
+    ov2 = ov[ov.method.isin(["edge_hw", "edge_v2"])]
+    phase1 = {
+        "conformal": e8a_rows,
+        "coverage": e8b_cov,
+        "nominal_coverage": 0.9,
+        "v1_v2": {
+            m: {
+                k: next(x for x in seed_stats(ov2, ["method"], k) if x["method"] == m)
+                for k in ("f1", "false_alarm_rate")
+            }
+            for m in ("edge_hw", "edge_v2")
+        },
+    }
+    fps = ROOT / "results" / "edge_footprint_stations.csv"
+    if fps.exists():
+        f = pd.read_csv(fps)
+        phase1["footprint"] = [
+            {
+                "station": str(r["station"]),
+                "cls": str(r["station_class"]),
+                "version": str(r["version"]),
+                "heap": int(r["heap_resident_bytes"]),
+                "package": int(r["package_bytes"]),
+                "us": round(float(r["us_per_sample_micropython"]), 1),
+            }
+            for r in f.to_dict("records")
+        ]
+
     data = {
         "seeds": cfg.seeds,
         "weeks": (cfg.network.train_days + cfg.network.calib_days + cfg.network.test_days) // 7,
@@ -128,6 +160,7 @@ def main() -> None:
         ],
         "e5": {"cold_one_step": e5_cold, "cold_day_ahead": e5_day},
         "e6": {"unmonitored": e6_unmon},
+        "phase1": phase1,
     }
     OUT.write_text(json.dumps(data, separators=(",", ":")) + "\n")
     print(f"wrote {OUT.relative_to(ROOT)} ({OUT.stat().st_size // 1024} KB)")
