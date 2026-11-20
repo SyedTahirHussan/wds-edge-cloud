@@ -38,12 +38,14 @@ SINGLE_NAV = {
     ("Datastreams", "Sensor"): ("Sensors", "Sensor"),
     ("Datastreams", "ObservedProperty"): ("ObservedProperties", "ObservedProperty"),
     ("Observations", "Datastream"): ("Datastreams", "Datastream"),
+    ("Observations", "FeatureOfInterest"): ("FeaturesOfInterest", "FeatureOfInterest"),
 }
 MANY_NAV = {
     ("Things", "Datastreams"): ("Datastreams", "Thing"),
     ("Sensors", "Datastreams"): ("Datastreams", "Sensor"),
     ("ObservedProperties", "Datastreams"): ("Datastreams", "ObservedProperty"),
     ("Datastreams", "Observations"): ("Observations", "Datastream"),
+    ("FeaturesOfInterest", "Observations"): ("Observations", "FeatureOfInterest"),
 }
 SEGMENT = re.compile(r"^(?P<name>[A-Za-z]+)(?:\((?P<id>[^)]+)\))?$")
 DEFAULT_TOP = 100
@@ -108,12 +110,22 @@ class Store:
             if "Datastream" not in body:
                 raise StaError(400, "Observation needs a Datastream")
             ent["Datastream"] = self._ref(body.pop("Datastream"), "Datastreams")
-            body.pop("FeatureOfInterest", None)
+            foi = body.pop("FeatureOfInterest", None)
+            if foi is not None:  # FROST derives one from the Thing's Location otherwise
+                ent["FeatureOfInterest"] = self._ref(foi, "FeaturesOfInterest")
             body.setdefault("resultTime", None)
             if "phenomenonTime" not in body:
                 raise StaError(400, "Observation needs phenomenonTime in this fake server")
         if (
-            es in ("Things", "Locations", "Sensors", "ObservedProperties", "Datastreams")
+            es
+            in (
+                "Things",
+                "Locations",
+                "Sensors",
+                "ObservedProperties",
+                "Datastreams",
+                "FeaturesOfInterest",
+            )
             and "name" not in body
         ):
             raise StaError(400, f"{es} needs a name")
@@ -134,7 +146,7 @@ class Store:
         eid = ent["@iot.id"]
         if (es, nav) in SINGLE_NAV:
             target, key = SINGLE_NAV[(es, nav)]
-            return target, [self.get(target, ent[key])]
+            return target, [self.get(target, ent[key])] if key in ent else []
         if (es, nav) in MANY_NAV:
             target, key = MANY_NAV[(es, nav)]
             return target, [e for e in self.sets[target].values() if e.get(key) == eid]

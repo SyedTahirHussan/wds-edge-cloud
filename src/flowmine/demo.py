@@ -61,12 +61,14 @@ def post_sources(client: StaClient, m: StaMap, tb: build.Testbed, t0: int, t1: i
     lab = tb.lab[(tb.lab.phenomenon_s >= t0 - 2 * 86400) & (tb.lab.result_s < t1)]
     for _, r in lab.iterrows():
         bodies.append(
-            mapping.observation_body(
+            mapping.lab_observation_body(
                 start,
                 int(r.phenomenon_s),
+                int(r.result_s),
                 float(r.value),
-                result_t_s=int(r.result_s),
-                datastream_id=m.datastreams[f"LAB-{r.sensor_id}"],
+                m.datastreams[f"LAB-{r.sensor_id}"],
+                m.features.get(str(r.node)),
+                str(r.sample_id),
             )
         )
     station_of = {s.sensor_id: s.station for s in tb.sensors}

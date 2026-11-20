@@ -148,6 +148,39 @@ def location_body(name: str, x: float, y: float) -> dict[str, Any]:
     }
 
 
+def sampling_point_body(node: str, x: float, y: float) -> dict[str, Any]:
+    """FeatureOfInterest of a laboratory sampling point (a hydrant or tap at an EPANET
+    node); the GeoJSON point uses the model's coordinates."""
+    return {
+        "name": f"sampling point {node}",
+        "description": f"Laboratory grab-sample point at EPANET node {node}",
+        "encodingType": "application/geo+json",
+        "feature": {"type": "Point", "coordinates": [x, y]},
+        "properties": {"epanet_node": node, "kind": "sampling_point"},
+    }
+
+
+def lab_observation_body(
+    start: datetime,
+    sampled_s: float,
+    reported_s: float,
+    value: float,
+    datastream_id: Any,
+    feature_id: Any | None = None,
+    sample_id: str | None = None,
+) -> dict[str, Any]:
+    """A laboratory result: phenomenonTime = sampling time, resultTime = reporting time,
+    linked to the sampling point's FeatureOfInterest."""
+    body = observation_body(
+        start, sampled_s, value, result_t_s=reported_s, datastream_id=datastream_id
+    )
+    if feature_id is not None:
+        body["FeatureOfInterest"] = {"@iot.id": feature_id}
+    if sample_id is not None:
+        body["parameters"] = {"sample_id": sample_id}
+    return body
+
+
 def datastream_body(
     name: str,
     kind: str,

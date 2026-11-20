@@ -8,7 +8,8 @@ Stream names (Datastream names) are the keys the rest of the code
 uses:
 
     P-15 / F-60 / L-1 / C-15   measured, one per sensor, on the station's Thing
-    LAB-C-15                   laboratory free chlorine at the analyser's node
+    LAB-C-15                   laboratory free chlorine at the analyser's node; each result
+                               links the FeatureOfInterest "sampling point <node>"
     MAINT-<station>            maintenance log records of that station's assets
     SIM-<sensor>, RES-<sensor> twin: simulated value and residual (measured - simulated)
     VIRT-<node>                twin: simulated pressure at an unmonitored node
@@ -41,6 +42,7 @@ class StaMap:
     datastreams: dict[str, int] = field(default_factory=dict)
     sensors: dict[str, int] = field(default_factory=dict)
     observed_properties: dict[str, int] = field(default_factory=dict)
+    features: dict[str, int] = field(default_factory=dict)  # sampling point node -> id
 
     def measured(self, sensor_ids: list[str]) -> dict[str, int]:
         return {s: self.datastreams[s] for s in sensor_ids}
@@ -150,6 +152,9 @@ def provision(
             stream(f"SIM-{s.sensor_id}", s.kind, "simulated", tid, "model", props)
             stream(f"RES-{s.sensor_id}", s.kind, "residual", tid, "model", props)
             if s.kind == "chlorine":
+                m.features[s.element] = client.ensure(
+                    "FeaturesOfInterest", mapping.sampling_point_body(s.element, *xy[s.element])
+                )
                 stream(
                     f"LAB-{s.sensor_id}",
                     "chlorine",
@@ -231,4 +236,8 @@ def load_map(client: StaClient) -> StaMap:
         m.sensors[s["properties"]["flowmine:key"]] = int(s["@iot.id"])
     for o in client.iterate("ObservedProperties", {"$top": 1000}):
         m.observed_properties[o["properties"]["flowmine:key"]] = int(o["@iot.id"])
+    for f in client.iterate(
+        "FeaturesOfInterest", {"$filter": "properties/kind eq 'sampling_point'"}
+    ):
+        m.features[str(f["properties"]["epanet_node"])] = int(f["@iot.id"])
     return m

@@ -123,6 +123,33 @@ def test_maintenance_record_as_json_result(sta: StaClient) -> None:
     assert got == rec
 
 
+def test_lab_result_with_sampling_point_feature(
+    sta: StaClient, smoke_cfg: Config, smoke_tb: Testbed
+) -> None:
+    m = provision(sta, smoke_cfg, smoke_tb.sensors, smoke_tb.stations)
+    cl = next(s for s in smoke_tb.sensors if s.kind == "chlorine")
+    foi = m.features[cl.element]
+    assert load_map(sta).features[cl.element] == foi
+    ds = m.datastreams[f"LAB-{cl.sensor_id}"]
+    tag = uuid.uuid4().int % 1000
+    t = 86400 * 400 + tag * 900  # far from other tests' times
+    body = mapping.lab_observation_body(START, t, t + 31 * 3600, 0.44, ds, foi, f"LAB-T{tag}")
+    sta.post_observations([body])
+    obs = sta.get(
+        f"FeaturesOfInterest({foi})/Observations",
+        {"$filter": f"phenomenonTime eq {mapping.iso(START, t)}", "$expand": "FeatureOfInterest"},
+    )["value"]
+    assert len(obs) == 1
+    got = obs[0]
+    assert mapping.seconds(START, got["resultTime"]) - mapping.seconds(
+        START, got["phenomenonTime"]
+    ) == (31 * 3600)
+    assert got["parameters"]["sample_id"] == f"LAB-T{tag}"
+    f = got["FeatureOfInterest"]
+    assert f["name"] == f"sampling point {cl.element}"
+    assert f["feature"]["type"] == "Point" and len(f["feature"]["coordinates"]) == 2
+
+
 def test_leak_candidates_as_json_result(sta: StaClient) -> None:
     ds = _stream(sta, "leak_candidates")
     body = mapping.leak_candidates_body(
