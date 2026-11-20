@@ -122,6 +122,28 @@ For the edge-only, central-only and hybrid architectures:
 - the share of event-affected samples that were reconstructed away;
 - the share of non-gap sensor faults that were raised as events.
 
+### E8 the v0.2 station
+
+- E8a, conformal coverage. For α in {0.01, 0.005, 0.001} and with one or four
+  time-of-day buckets, the station runs with only the conformal thresholds. On clean
+  samples with a forecast, no rule-test flag and no level-shift release: the share
+  rejected by the residual test, on week 7 (in-sample) and week 8, and the station's
+  false-alarm rate over all tests.
+- E8b, reconstruction intervals. Artificial gaps on clean stretches as in E2
+  (12 per length per week, other random draws), calibration on week-7 gaps, scores on
+  week-8 gaps: coverage, mean width and MAE by gap length, for the Holt-Winters and
+  spatial estimates and two selectors.
+- E8c, ablation: v0.1, conformal only, conformal + CUSUM, conformal + cross-sensor
+  model, all three (= `edge_v2` in E1), with the E1 metrics.
+- E8d, int8: RMSE of the cross-sensor MLPs and of the neural forecasters with
+  float32 and int8 weights, on clean samples of weeks 7 and 8.
+- The cross-sensor model choice (ridge or MLP) per sensor and the CUSUM parameter
+  choice are written to `e8_xmodels.csv` and `e8_cusum.csv`.
+
+`edge_v2` also appears in E1 as a method. The station footprint
+(`results/edge_footprint_stations.csv`) comes from `flowmine experiments footprint`
+and, like the forecaster timings, is not part of `make reproduce`.
+
 ### Checks
 
 False spatial alarms with and without the maintenance log. Day-ahead

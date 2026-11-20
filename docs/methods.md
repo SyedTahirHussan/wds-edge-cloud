@@ -223,6 +223,96 @@ resolution step on transmitted slots; a property test checks this. On an ESP32,
 MicroPython uses 32-bit floats while the cloud uses 64-bit ones, so the copies would
 drift apart slightly. That is not handled here.
 
+## Station v0.2 (Phase 1)
+
+Three additions, fitted or calibrated in the cloud and carried in the model package
+(`meta` of each sensor). A package without them runs as v0.1. The cloud side is
+`edge/v2.py`; the station side is `edge/core/conformal.py`, `cusum.py`, `xmodel.py`
+and `station.py`. All three run under MicroPython (tests in
+`tests/micropython/core_tests.py`).
+
+### Conformal residual thresholds
+
+The nonconformity score of a sample is its residual in units of the running scale,
+
+    z_t = r_t / (1.2533 · max(s_t, s_min))
+
+the same quantity the v0.1 test compares with k. On week 7 the station runs with the
+v0.1 parameters and records z for every clean sample (no fault and no process-event
+label) that had a forecast and was not later released as a level shift. With n such
+scores, the threshold at level α is the ⌈(n + 1)(1 − α)⌉-th smallest |z| [R18]; when
+that rank exceeds n the threshold is infinite. It replaces k, and the station rejects
+a sample when |z_t| > q. For exchangeable scores this bounds the rejection rate of
+clean samples by α. Residuals are autocorrelated, so the bound is checked
+empirically on the test week (E8a). The operating level is α = 0.005, the rate v0.1
+was calibrated for; v0.1 also floored k at 4, which v0.2 does not. A variant with one
+threshold per 6-hour bucket of the day is reported in E8a and not used: a 15-minute
+sensor has about 670 week-7 samples, 168 per bucket, fewer than 1/α for α ≤ 0.005.
+
+### Drift: two-sided CUSUM
+
+On every accepted sample [R17]:
+
+    S⁺_t = max(0, S⁺_{t−1} + z_t − k)      S⁻_t = max(0, S⁻_{t−1} − z_t − k)
+
+with z clipped to ±4. While max(S⁺, S⁻) > h, accepted samples carry MODEL_RESIDUAL
+without RECONSTRUCTED (the forecaster has followed the drift, so its value is no
+better). A level shift resets both sums. Calibration uses a second week-7 pass with
+the conformal thresholds installed: for each k in {0.25, 0.5, 0.75, 1}, h per sensor
+is the 0.998 quantile of the statistic on clean samples, and the k with the best
+week-7 drift recall is kept. Page-Hinkley was the alternative; the two-sided CUSUM
+uses the known zero mean of the residual as its reference and treats both drift
+directions alike.
+
+### Cross-sensor model
+
+At each station with two sensors (pump: flow and discharge pressure; tank: level and
+inlet flow; chlorine logger: pressure and chlorine) each sensor y is predicted from
+the other sensor o:
+
+    f = [o, o − o_prev, o², sin 2πτ, cos 2πτ, sin 4πτ, cos 4πτ]
+    ŷ = ȳ + σ_y · g((f − μ) / σ)
+
+with τ the time of day in days, o the latest validated sample of the other sensor
+strictly before t and o_prev the one before it. g is ridge regression (α = 1 on
+standardised features) or an MLP with 8 ReLU units, fitted on weeks 1–6; the MLP is
+used when its week-7 RMSE on clean samples is lower (E8 table "cross-sensor
+models"). Its weights are stored as int8 with one scale per tensor, w = scale · q,
+scale = max|w| / 127; E8d reports the RMSE change, which stays far inside the spread
+between seeds on week 7.
+
+The standardised residual e = (y − ŷ) / s, with s its training sd, gets two tests:
+|e| > q_x with q_x the conformal threshold at α = 0.002, and a two-sided CUSUM on e
+(k from {0.5, 1, 1.5, 2, 3} by week-7 bias and drift recall, h for 0.2 % of clean
+samples in alarm). A failing test does not say which instrument is wrong. The
+station flags y (CROSSCHECK, value kept) when
+
+- y's CUSUM is in alarm and the CUSUM of its input is not (a structured-residual
+  signature: a bias on y moves e_y by the bias and e_o only through o's model's
+  sensitivity to y), or
+- |e| > q_x, y released a level shift or a drift flag between 30 min and 72 h
+  earlier, and o did not do so within 30 min of it (a pump switch moves both).
+
+### Reconstruction intervals
+
+The half-width of a reconstruction h seconds into a gap is q_h · s, with s the
+sensor's training residual scale and q_h the conformal quantile (α = 0.1) of
+|error| / s over week-7 artificial gaps, pooled over sensors, in horizon bins
+of 15 min, 1 h, 3 h, 6 h, 12 h and 24 h; separate tables for the station's
+Holt-Winters forecast and the spatial estimate. The "narrower interval" selector
+uses whichever method has the smaller q_h at that horizon; v0.1's selector uses a
+crossover gap length. Only the station's table would travel to the station;
+`conformal.halfwidth` is the lookup. The codec does not carry the interval.
+
+### Footprint
+
+`flowmine experiments footprint` builds four stations from their packages
+(`edge/core/memprobe.py`) and feeds them one day of week-7 samples under the
+MicroPython Unix port. The live heap is `gc.mem_alloc()` after `gc.collect()`, minus
+the heap before the station was built. MicroPython boxes every float result, so the
+bytes allocated while one sample is processed are mostly garbage; they are reported
+separately as an upper bound on the transient need.
+
 ## Central analytics (Phase 2)
 
 ### Homogenisation

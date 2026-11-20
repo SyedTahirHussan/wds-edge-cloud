@@ -482,6 +482,13 @@ def build(cfg: Config, results: Path) -> tuple[str, str]:
             key,
             "**E1 detection** (overall, non-gap faults)",
             t_e1,
+            "**E8 v0.2 station**: ablation on the test week (E1 metrics)",
+            t8["e8c"],
+            "**E8a conformal thresholds**, one table per sensor: nominal level against "
+            "the empirical rate",
+            t8["e8a_compact"],
+            "**E8b reconstruction intervals**, nominal coverage 0.90",
+            t8["e8b_pooled"],
             "**E2 reconstruction**, pressure MAE by gap length",
             t_e2["pressure (m)"],
             "**E3 uplink**",
@@ -491,11 +498,12 @@ def build(cfg: Config, results: Path) -> tuple[str, str]:
             "**E7 process events**",
             t_e7,
             *(["**Edge footprint**", t_fp] if t_fp else []),
+            *(["**Station footprint (v0.1 and v0.2)**", t_fps] if t_fps else []),
             "![Recall by fault type](results/figures/e1_recall_by_fault.png)",
             "![Reconstruction error versus gap length]"
             "(results/figures/e2_reconstruction_vs_gap.png)",
             "![Uplink bytes and delta trade-off](results/figures/e3_uplink.png)",
-            "All tables, including E4, E5 and the per-fault-type breakdown, are in "
+            "All tables, including E4, E5, E8 in full and the per-fault-type breakdown, are in "
             "[results/summary.md](results/summary.md).",
         ]
     )
@@ -506,6 +514,15 @@ def e8_tables(d: dict[str, pd.DataFrame]) -> dict[str, str]:
     """E8a-c tables (the v0.2 station)."""
     out: dict[str, str] = {}
     a = d["e8a_conformal"]
+    out["e8a_compact"] = table(
+        a[(a.buckets == 1) & (a.period == "test")],
+        ["alpha"],
+        {
+            "empirical_rate": "residual-test rejections on clean test-week samples",
+            "edge_false_alarm_rate": "station false-alarm rate (all tests)",
+        },
+        digits=4,
+    )
     out["e8a"] = table(
         a,
         ["buckets", "alpha", "period"],

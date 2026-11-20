@@ -8,6 +8,24 @@ touched utility data, and the faults follow simple parametric shapes. Real fault
 fouled chlorine membrane, a transmitter losing power slowly, a telemetry clock that
 jumps) are messier and are not labelled.
 
+### The station still misses most biases
+
+Version 0.2 gives the station a model of each sensor from its neighbour at the same
+station. On Net3 that neighbour is often a poor witness: at the five chlorine loggers
+pressure says little about chlorine, and at the pump and tank stations the
+cross-sensor residual has a spread close to the size of the injected biases. Five
+loggers have one sensor and no cross-sensor test. The E1 and E8c tables give the
+recall: better than v0.1, still far below the central spatial model, and bought with
+a false-alarm rate about three times v0.1's. The drift CUSUM on the forecast
+residual adds false alarms and almost no detections, because Holt-Winters follows a
+slow drift. A station with a third, physically related sensor (a second pressure
+point on the same main, or a pump's power draw) would be the next thing to try.
+
+The conformal guarantee assumes exchangeable scores. Residuals are autocorrelated
+and week 8 holds a leak that week 7 does not, so E8a is an empirical check, not a
+proof. The reconstruction intervals cover less than their nominal level on the test
+week for the same reason and because a week holds few gaps of each length.
+
 ### One small network
 
 Net3 has 92 junctions and one consumer (node 203) that takes
@@ -28,8 +46,10 @@ ESP32 matter:
 
 - MicroPython uses 32-bit floats there, so the station's and the cloud's
   send-on-delta copies would drift apart slightly; this is not handled.
-- The weekly Holt-Winters buffer (about 9 kB as float32) fits in ESP32 RAM, but was
-  not tried.
+- The live heap of a v0.2 station under the MicroPython Unix port is a few percent of
+  the ESP32's 520 KB SRAM (`results/edge_footprint_stations.csv`; Espressif ESP32
+  Series Datasheet v5.3). MicroPython on an ESP32 gets only part of that SRAM, and
+  nothing was run on one.
 - The SQLite store would need a flat-file replacement.
 
 ### Simplified chlorine kinetics

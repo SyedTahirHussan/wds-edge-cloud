@@ -63,14 +63,39 @@ flowchart LR
 Details and the reasons for each technology choice are in
 [docs/architecture.md](docs/architecture.md).
 
+## What changed in v0.2
+
+Version 0.2 works on Phase 1 only: what the station can check by itself. Everything
+below is fitted or calibrated in the cloud on weeks 1–7 and shipped to the station in
+its model package; a package without the new keys runs exactly as v0.1.
+
+- The residual test's thresholds are split conformal quantiles of week-7 residuals,
+  one per sensor, for a stated false-alarm level ([R18]). E8a checks the level on the
+  test week.
+- A two-sided CUSUM ([R17]) on the standardised residuals looks for slow drift.
+- At every station with two sensors, a small model (ridge, or an MLP when it beats
+  ridge on week 7) predicts each sensor from the other. Its residual has its own
+  conformal threshold and CUSUM, and the station blames a sensor only when the
+  signature points at it alone. The MLP weights travel as int8.
+- Each reconstructed value gets a conformal interval by time since the gap started
+  (E8b).
+- The station's heap was measured under the MicroPython Unix port and compared with
+  the ESP32's SRAM ([R19]).
+
+The code is in `edge/core/conformal.py`, `cusum.py`, `xmodel.py` and `station.py`
+(station side, MicroPython) and `edge/v2.py` (cloud side). The cross-sensor model
+accounts for nearly all of the gain in bias and drift recall; the drift CUSUM adds
+false alarms and almost no detections. The station still misses most biases. Phases
+2 and 3 are as in v0.1.
+
 ## The DC11 description, mapped to the code
 
 | DC11 item | modules | experiments |
 |---|---|---|
-| Phase 1: distributed validation and reconstruction at the edge | `edge/core`, `edge` | E1, E2, E3, E4 |
+| Phase 1: distributed validation and reconstruction at the edge | `edge/core`, `edge`, `edge/v2.py` | E1, E2, E3, E4, E8 |
 | Phase 2: analytics on heterogeneous SensorThings data (SCADA, laboratory, maintenance, external) | `sta`, `central` | E1, E2, maintenance and temperature checks |
 | Phase 3: integration and synergy of distributed and centralised results | `hybrid`, `experiments` | E1 (fusion), E2 (hybrid), E5, E6, E7 |
-| Outcome 1: edge data collection and validation framework | `edge/core`, `edge` | E1-E4 |
+| Outcome 1: edge data collection and validation framework | `edge/core`, `edge` | E1-E4, E8 |
 | Outcome 2: live IoT data connected to EPANET | `sta`, `twin` | E6, the demo |
 | Outcome 3: decentralised storage with centralised model management | `edge/store.py`, `hybrid/registry.py`, `hybrid/federated.py` | E4, E5 |
 
@@ -131,6 +156,33 @@ Configuration `default`, seeds 1, 2, 3, 4, 5; mean ± sample standard deviation 
 | Central (spatial + lab) | 0.499 ± 0.231 | 0.367 ± 0.138 | 0.393 ± 0.140 | 0.440 ± 0.195 | 0.129 ± 0.034 | 126.414 ± 219.748 | 0.035 ± 0.039 | 0.067 ± 0.025 |
 | Hybrid fusion | 0.470 ± 0.209 | 0.428 ± 0.078 | 0.427 ± 0.103 | 0.650 ± 0.137 | 0.094 ± 0.029 | 197.483 ± 138.301 | 0.041 ± 0.029 | 0.082 ± 0.051 |
 
+**E8 v0.2 station**: ablation on the test week (E1 metrics)
+
+| variant | F1 | false-alarm rate | spike recall | stuck recall | bias recall | drift recall |
+|---|---|---|---|---|---|---|
+| v0.1 station | 0.153 ± 0.014 | 0.005 ± 0.001 | 0.825 ± 0.143 | 0.805 ± 0.027 | 0.005 ± 0.004 | 0.014 ± 0.021 |
+| conformal thresholds only | 0.153 ± 0.010 | 0.005 ± 0.001 | 0.875 ± 0.153 | 0.805 ± 0.027 | 0.004 ± 0.003 | 0.015 ± 0.020 |
+| conformal + CUSUM | 0.143 ± 0.008 | 0.012 ± 0.005 | 0.875 ± 0.153 | 0.817 ± 0.009 | 0.004 ± 0.003 | 0.015 ± 0.021 |
+| conformal + cross-sensor model | 0.272 ± 0.116 | 0.008 ± 0.004 | 0.875 ± 0.153 | 0.812 ± 0.030 | 0.098 ± 0.135 | 0.119 ± 0.102 |
+| v0.2 station (all three) | 0.248 ± 0.099 | 0.015 ± 0.005 | 0.875 ± 0.153 | 0.823 ± 0.009 | 0.098 ± 0.135 | 0.113 ± 0.100 |
+
+**E8a conformal thresholds**, one table per sensor: nominal level against the empirical rate
+
+| alpha | residual-test rejections on clean test-week samples | station false-alarm rate (all tests) |
+|---|---|---|
+| 0.01 | 0.0065 ± 0.0012 | 0.0075 ± 0.0012 |
+| 0.005 | 0.0037 ± 0.0011 | 0.0051 ± 0.0011 |
+| 0.001 | 0.0007 ± 0.0003 | 0.0025 ± 0.0006 |
+
+**E8b reconstruction intervals**, nominal coverage 0.90
+
+| method | coverage, all kinds |
+|---|---|
+| holt_winters | 0.850 ± 0.053 |
+| hybrid_crossover | 0.872 ± 0.039 |
+| hybrid_width | 0.847 ± 0.028 |
+| spatial | 0.886 ± 0.065 |
+
 **E2 reconstruction**, pressure MAE by gap length
 
 | gap (min) | last_value | linear_offline | seasonal_naive | holt_winters | mlp | spatial | hybrid |
@@ -178,13 +230,32 @@ Measured on a laptop (CPython 3.12 and the MicroPython Unix port) for one pressu
 | holt_winters | 4 | 9264 | 2316 | 3.1 | 19.8 |
 | mlp | 609 | 2466 | 300 | 29.0 | 121.8 |
 
+**Station footprint (v0.1 and v0.2)**
+
+Measured with the MicroPython Unix port on a laptop (gc.mem_alloc after a collection), one day of calibration-week samples per station. The SRAM figure is the ESP32's internal SRAM from Espressif's ESP32 Series Datasheet v5.3; this is a comparison of numbers, not a measurement on an ESP32, where MicroPython's heap is only part of that SRAM.
+
+| station | version | package (B) | live heap (B) | share of 520 KB SRAM | most allocated in one sample (B) | µs/sample MicroPython |
+|---|---|---|---|---|---|---|
+| PS-10 (pump) | v0.1 | 91964 | 22080 | 4.1% | 2560 | 33.0 |
+| PS-10 (pump) | v0.2 float32 | 95987 | 25568 | 4.8% | 20288 | 60.6 |
+| PS-10 (pump) | v0.2 int8 | 94007 | 25248 | 4.7% | 16192 | 54.3 |
+| TK-1 (tank) | v0.1 | 59770 | 16352 | 3.1% | 3264 | 28.4 |
+| TK-1 (tank) | v0.2 float32 | 63805 | 19776 | 3.7% | 76256 | 56.5 |
+| TK-1 (tank) | v0.2 int8 | 61804 | 19456 | 3.7% | 59872 | 56.0 |
+| LG-131 (logger) | v0.1 | 63026 | 15904 | 3.0% | 2464 | 24.8 |
+| LG-131 (logger) | v0.2 float32 | 65715 | 18720 | 3.5% | 20256 | 55.2 |
+| LG-131 (logger) | v0.2 int8 | 64721 | 18560 | 3.5% | 16160 | 49.6 |
+| LG-101 (logger) | v0.1 | 45639 | 11360 | 2.1% | 2464 | 21.1 |
+| LG-101 (logger) | v0.2 float32 | 45688 | 11552 | 2.2% | 2624 | 22.4 |
+| LG-101 (logger) | v0.2 int8 | 45688 | 11552 | 2.2% | 2624 | 41.7 |
+
 ![Recall by fault type](results/figures/e1_recall_by_fault.png)
 
 ![Reconstruction error versus gap length](results/figures/e2_reconstruction_vs_gap.png)
 
 ![Uplink bytes and delta trade-off](results/figures/e3_uplink.png)
 
-All tables, including E4, E5 and the per-fault-type breakdown, are in [results/summary.md](results/summary.md).
+All tables, including E4, E5, E8 in full and the per-fault-type breakdown, are in [results/summary.md](results/summary.md).
 
 <!-- results:end -->
 
@@ -197,6 +268,15 @@ All tables, including E4, E5 and the per-fault-type breakdown, are in [results/s
   from the other sensors (bias) and from laboratory samples (chlorine drift, a day or
   two late because of the reporting delay). The spatial model misses most frozen
   values and about half of the spikes.
+- The v0.2 station raises F1 over v0.1 and finds a minority of biases and drifts
+  instead of almost none, at roughly three times the false-alarm rate. The gain comes
+  from the cross-sensor model at pump and tank stations. The ablation in E8 shows the
+  conformal thresholds alone leave F1 where it was, and the drift CUSUM only adds
+  false alarms.
+- With one conformal table per sensor, the share of clean test-week samples the
+  residual test rejects stays close to the level the thresholds were set for. Four
+  time-of-day buckets leave the 15-minute sensors with too few calibration samples
+  per bucket, and the test falls silent at the lower levels.
 - Hybrid fusion has the highest overall F1, but its false-alarm rate is several times
   the edge's and varies a lot between seeds. The fusion threshold was set for F1 on
   the calibration week, which favours recall.
@@ -219,6 +299,16 @@ All tables, including E4, E5 and the per-fault-type breakdown, are in [results/s
   None of the three designs reconstructed an event away.
 
 Where the approach loses:
+
+- The v0.2 station still misses most biases and drifts. At the chlorine loggers
+  pressure says little about chlorine, and at the pump and tank stations the
+  cross-sensor residual has a spread close to the size of the injected faults. Single-
+  sensor loggers get no cross-sensor test at all.
+- The drift CUSUM on forecast residuals does not pay for itself here: Holt-Winters
+  follows a slow drift, so the residual mean it leaves is small next to its noise.
+- The reconstruction intervals cover less than their nominal 90 % on the test week.
+  Samples inside a gap are correlated, and a calibration week holds few gaps of each
+  length, so the quantiles are noisy.
 
 - The triage raises more sensor faults as process events than the edge-only design
   does (E7). A faulty sensor that changes at the same time as a real hydraulic change,
@@ -243,6 +333,7 @@ The full list, and what a utility deployment would need next, is in
 - simplified chlorine kinetics;
 - a synthetic maintenance log;
 - thresholds calibrated with labels of a calibration week;
+- a station that, even in v0.2, misses most bias and drift faults;
 - one demand multiplier in the twin;
 - no security layer on MQTT or HTTP;
 - the neural network trained in numpy because PyTorch could not be installed here.
@@ -311,12 +402,20 @@ experimental protocol in [docs/experiments.md](docs/experiments.md).
 - [R16] OGC SensorThings API Part 1: Sensing, Version 1.1. Open Geospatial Consortium,
   document 18-088 (editors S. Liang, T. Khalafbeigi, H. van der Schaaf).
   doi:10.62973/18-088
+- [R17] Page, E. S. (1954). Continuous inspection schemes. *Biometrika* 41(1–2),
+  100–115. doi:10.1093/biomet/41.1-2.100
+- [R18] Angelopoulos, A. N., Bates, S. (2021). A gentle introduction to conformal
+  prediction and distribution-free uncertainty quantification. arXiv:2107.07511.
+- [R19] Espressif Systems. ESP32 Series Datasheet, version 5.3, "CPU and Memory"
+  (p. 4: 448 KB ROM, 520 KB SRAM, 16 KB SRAM in RTC).
+  https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf
 - LoRa Alliance (2022). LoRaWAN Regional Parameters RP002-1.0.4, section 2.4.6, table
   12 (EU863-870 maximum payload size).
   https://resources.lora-alliance.org/technical-specifications/rp002-1-0-4-regional-parameters
   (no DOI).
 
-R1–R11, R13–R16 were checked on Crossref. R2's author list comes from OpenAlex and
+R1–R11, R13–R17 were checked on Crossref and R18 on arXiv; the memory figures in
+R19 were read from the PDF itself. R2's author list comes from OpenAlex and
 Semantic Scholar because the Crossref record has none. R12 was checked on arXiv and
 PMLR, and the LoRaWAN document on the LoRa Alliance site.
 
